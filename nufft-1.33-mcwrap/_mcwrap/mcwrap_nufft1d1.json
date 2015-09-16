@@ -1,0 +1,158 @@
+[
+{
+	"function_name":"nufft1d1f90",
+	"parameters"[
+		{"prole":"set_input","ptype":"int","pname":"nj","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<xj>,1)"},
+		{"prole":"input","ptype":"double*","pname":"xj","dimensions":[" $nj$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double*","pname":"cj","dimensions":[" $nj$"," 1"],"is_complex":"1","set_value":""},
+		{"prole":"input","ptype":"int","pname":"iflag","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double","pname":"eps","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"int","pname":"ms","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"output","ptype":"double*","pname":"fk","dimensions":[" $ms$"," 1"],"is_complex":"1","set_value":""},
+		{"prole":"output","ptype":"int*","pname":"ier","dimensions":[" 1"," 1"],"is_complex":"0","set_value":""}
+	],
+	"return_type":"void"
+	"sources":["nufft1df90.f","dfftpack.f","next235.f"]
+},
+{
+	"function_name":"nufft1d2f90",
+	"parameters"[
+		{"prole":"set_input","ptype":"int","pname":"nj","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<xj>,1)"},
+		{"prole":"input","ptype":"double*","pname":"xj","dimensions":[" $ms$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"output","ptype":"double*","pname":"cj","dimensions":[" $nj$"," 1"],"is_complex":"1","set_value":""},
+		{"prole":"input","ptype":"int","pname":"iflag","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double","pname":"eps","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"set_input","ptype":"int","pname":"ms","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<fk>,1)"},
+		{"prole":"input","ptype":"double*","pname":"fk","dimensions":[" $ms$"," 1"],"is_complex":"1","set_value":""},
+		{"prole":"output","ptype":"int*","pname":"ier","dimensions":[" 1"," 1"],"is_complex":"0","set_value":""}
+	],
+	"return_type":"void"
+	"sources":["nufft1df90.f","dfftpack.f","next235.f"]
+},
+{
+	"function_name":"nufft1d3f90",
+	"parameters"[
+		{"prole":"set_input","ptype":"int","pname":"nj","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<xj>,1)"},
+		{"prole":"input","ptype":"double*","pname":"xj","dimensions":[" $nj$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double*","pname":"cj","dimensions":[" $nj$"," 1"],"is_complex":"1","set_value":""},
+		{"prole":"input","ptype":"int","pname":"iflag","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double","pname":"eps","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"set_input","ptype":"int","pname":"nk","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<sk>,1)"},
+		{"prole":"input","ptype":"double*","pname":"sk","dimensions":[" $nk$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"output","ptype":"double*","pname":"fk","dimensions":[" $nk$"," 1"],"is_complex":"1","set_value":""},
+		{"prole":"output","ptype":"int*","pname":"ier","dimensions":[" 1"," 1"],"is_complex":"0","set_value":""}
+	],
+	"return_type":"void"
+	"sources":["nufft1df90.f","dfftpack.f","next235.f"]
+},
+{
+	"function_name":"nufft2d1f90",
+	"parameters"[
+		{"prole":"set_input","ptype":"int","pname":"nj","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<xj>,1)"},
+		{"prole":"input","ptype":"double*","pname":"xj","dimensions":[" $nj$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double*","pname":"yj","dimensions":[" $nj$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double*","pname":"cj","dimensions":[" $nj$"," 1"],"is_complex":"1","set_value":""},
+		{"prole":"input","ptype":"int","pname":"iflag","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double","pname":"eps","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"int","pname":"ms","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"int","pname":"mt","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"output","ptype":"double*","pname":"fk","dimensions":[" $ms$"," $mt$"],"is_complex":"1","set_value":""},
+		{"prole":"output","ptype":"int*","pname":"ier","dimensions":[" 1"," 1"],"is_complex":"0","set_value":""}
+	],
+	"return_type":"void"
+	"sources":["nufft2df90.f","dfftpack.f","next235.f"]
+},
+{
+	"function_name":"nufft2d2f90",
+	"parameters"[
+		{"prole":"set_input","ptype":"int","pname":"nj","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<xj>,1)"},
+		{"prole":"input","ptype":"double*","pname":"xj","dimensions":[" $nj$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double*","pname":"yj","dimensions":[" $nj$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"output","ptype":"double*","pname":"cj","dimensions":[" $nj$"," 1"],"is_complex":"1","set_value":""},
+		{"prole":"input","ptype":"int","pname":"iflag","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double","pname":"eps","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"set_input","ptype":"int","pname":"ms","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<fk>,1)"},
+		{"prole":"set_input","ptype":"int","pname":"mt","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<fk>,2)"},
+		{"prole":"input","ptype":"double*","pname":"fk","dimensions":[" $ms$"," $mt$"],"is_complex":"1","set_value":""},
+		{"prole":"output","ptype":"int*","pname":"ier","dimensions":[" 1"," 1"],"is_complex":"0","set_value":""}
+	],
+	"return_type":"void"
+	"sources":["nufft2df90.f","dfftpack.f","next235.f"]
+},
+{
+	"function_name":"nufft2d3f90",
+	"parameters"[
+		{"prole":"set_input","ptype":"int","pname":"nj","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<xj>,1)"},
+		{"prole":"input","ptype":"double*","pname":"xj","dimensions":[" $nj$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double*","pname":"yj","dimensions":[" $nj$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double*","pname":"cj","dimensions":[" $nj$"," 1"],"is_complex":"1","set_value":""},
+		{"prole":"input","ptype":"int","pname":"iflag","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double","pname":"eps","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"set_input","ptype":"int","pname":"nk","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<sk>,1)"},
+		{"prole":"input","ptype":"int","pname":"sk","dimensions":[" $nk$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"int","pname":"tk","dimensions":[" $nk$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"output","ptype":"double*","pname":"fk","dimensions":[" $nk$"," 1"],"is_complex":"1","set_value":""},
+		{"prole":"output","ptype":"int*","pname":"ier","dimensions":[" 1"," 1"],"is_complex":"0","set_value":""}
+	],
+	"return_type":"void"
+	"sources":["nufft2df90.f","dfftpack.f","next235.f"]
+},
+{
+	"function_name":"nufft3d1f90",
+	"parameters"[
+		{"prole":"set_input","ptype":"int","pname":"nj","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<xj>,1)"},
+		{"prole":"input","ptype":"double*","pname":"xj","dimensions":[" $nj$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double*","pname":"yj","dimensions":[" $nj$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double*","pname":"zj","dimensions":[" $nj$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double*","pname":"cj","dimensions":[" $nj$"," 1"],"is_complex":"1","set_value":""},
+		{"prole":"input","ptype":"int","pname":"iflag","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double","pname":"eps","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"int","pname":"ms","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"int","pname":"mt","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"int","pname":"mu","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"output","ptype":"double*","pname":"fk","dimensions":[" $ms$"," $mt$"," $mu$"],"is_complex":"1","set_value":""},
+		{"prole":"output","ptype":"int*","pname":"ier","dimensions":[" 1"," 1"],"is_complex":"0","set_value":""}
+	],
+	"return_type":"void"
+	"sources":["nufft3df90.f","dfftpack.f","next235.f"]
+},
+{
+	"function_name":"nufft3d2f90",
+	"parameters"[
+		{"prole":"set_input","ptype":"int","pname":"nj","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<xj>,1)"},
+		{"prole":"input","ptype":"double*","pname":"xj","dimensions":[" $nj$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double*","pname":"yj","dimensions":[" $nj$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double*","pname":"zj","dimensions":[" $nj$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"output","ptype":"double*","pname":"cj","dimensions":[" $nj$"," 1"],"is_complex":"1","set_value":""},
+		{"prole":"input","ptype":"int","pname":"iflag","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double","pname":"eps","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"set_input","ptype":"int","pname":"ms","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<fk>,1)"},
+		{"prole":"set_input","ptype":"int","pname":"mt","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<fk>,2)"},
+		{"prole":"set_input","ptype":"int","pname":"mu","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<fk>,3)"},
+		{"prole":"input","ptype":"double*","pname":"fk","dimensions":[" $ms$"," $mt$"," $mu$"],"is_complex":"1","set_value":""},
+		{"prole":"output","ptype":"int*","pname":"ier","dimensions":[" 1"," 1"],"is_complex":"0","set_value":""}
+	],
+	"return_type":"void"
+	"sources":["nufft3df90.f","dfftpack.f","next235.f"]
+},
+{
+	"function_name":"nufft3d3f90",
+	"parameters"[
+		{"prole":"set_input","ptype":"int","pname":"nj","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<xj>,1)"},
+		{"prole":"input","ptype":"double*","pname":"xj","dimensions":[" $nj$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double*","pname":"yj","dimensions":[" $nj$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double*","pname":"zj","dimensions":[" $nj$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double*","pname":"cj","dimensions":[" $nj$"," 1"],"is_complex":"1","set_value":""},
+		{"prole":"input","ptype":"int","pname":"iflag","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"double","pname":"eps","dimensions":[],"is_complex":"0","set_value":""},
+		{"prole":"set_input","ptype":"int","pname":"nk","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<sk>,1)"},
+		{"prole":"input","ptype":"int","pname":"sk","dimensions":[" $nk$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"int","pname":"tk","dimensions":[" $nk$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"input","ptype":"int","pname":"uk","dimensions":[" $nk$"," 1"],"is_complex":"0","set_value":""},
+		{"prole":"output","ptype":"double*","pname":"fk","dimensions":[" 1"," $nk$"],"is_complex":"1","set_value":""},
+		{"prole":"output","ptype":"int*","pname":"ier","dimensions":[" 1"," 1"],"is_complex":"0","set_value":""}
+	],
+	"return_type":"void"
+	"sources":["nufft3df90.f","dfftpack.f","next235.f"]
+}
+]

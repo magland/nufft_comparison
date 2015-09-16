@@ -5,3 +5,5 @@ addpath([path0,'/nufft_fessler/nufft']);
 addpath([path0,'/nufft_fessler/utilities']);
 addpath([path0,'/nufft_fessler/systems']);
 addpath([path0,'/nufft_fessler/systems/arch']);
+addpath([path0,'/blocknufft']);
+addpath([path0,'/nufft-1.33-mcwrap']);

@@ -1,0 +1,90 @@
+
+######### 1 DIMENSION #########
+
+    %%% TYPE 1 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    MCWRAP [ COMPLEX fk[ms,1], ier[1,1] ] = nufft1d1f90( xj[nj,1], COMPLEX cj[nj,1], iflag, eps, ms )
+        SET_INPUT nj = size(xj,1)
+        SOURCES nufft1df90.f dfftpack.f next235.f
+        void nufft1d1f90(int nj,double *xj,double *cj,int iflag,double eps,int ms,double *fk,int *ier);
+        % xj are the nonuniform locations and cj are the input values in space
+        % fk are the output values on uniform grid in fourier space
+
+    %%% TYPE 2 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    MCWRAP [ COMPLEX cj[nj,1], ier[1,1] ] = nufft1d2f90( xj[nj,1], COMPLEX fk[ms,1], iflag, eps )
+        SET_INPUT nj = size(xj,1)
+        SET_INPUT ms = size(fk,1)
+        SOURCES nufft1df90.f dfftpack.f next235.f
+        void nufft1d2f90(int nj,double *xj,double *cj,int iflag,double eps,int ms,double *fk,int *ier);
+        % xj are the locations and cj are the nonuniform output values in space
+        % fk are the input values on uniform grid in fourier space
+
+    %%% TYPE 3 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    MCWRAP [ COMPLEX fk[nk,1], ier[1,1] ] = nufft1d3f90( xj[nj,1], COMPLEX cj[nj,1], iflag, eps, sk[nk,1] )
+        SET_INPUT nj = size(xj,1)
+        SET_INPUT nk = size(sk,1)
+        SOURCES nufft1df90.f dfftpack.f next235.f
+        void nufft1d3f90(int nj,double *xj,double *cj,int iflag,double eps,int nk,double *sk,double *fk,int *ier);
+        % xj are the nonuniform locations and cj are the input values in space
+        % sk are the nonuniform locations and fk are the output values in fourier space
+
+
+######### 2 DIMENSIONS #########
+
+    %%% TYPE 1 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    MCWRAP [ COMPLEX fk[ms,mt], ier[1,1] ] = nufft2d1f90( xj[nj,1], yj[nj,1], COMPLEX cj[nj,1], iflag, eps, ms, mt )
+        SET_INPUT nj = size(xj,1)
+        SOURCES nufft2df90.f dfftpack.f next235.f
+        void nufft2d1f90(int nj,double *xj,double *yj,double *cj,int iflag,double eps,int ms,int mt,double *fk,int *ier);
+        % xj,yj are the nonuniform locations and cj are the input values in space
+        % fk are the output values on uniform grid in fourier space
+
+    %%% TYPE 2 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    MCWRAP [ COMPLEX cj[nj,1], ier[1,1] ] = nufft2d2f90( xj[nj,1], yj[nj,1], iflag, eps, COMPLEX fk[ms,mt] )
+        SET_INPUT nj = size(xj,1)
+        SET_INPUT ms = size(fk,1)
+        SET_INPUT mt = size(fk,2)
+        SOURCES nufft2df90.f dfftpack.f next235.f
+        void nufft2d2f90(int nj,double *xj,double *yj,double *cj,int iflag,double eps,int ms,int mt,double *fk,int *ier);
+        % xj,yj are the nonuniform locations and cj are the output values in space
+        % fk are the input values on uniform grid in fourier space
+
+    %%% TYPE 3 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    MCWRAP [ COMPLEX fk[nk,1], ier[1,1] ] = nufft2d3f90( xj[nj,1], yj[nj,1], COMPLEX cj[nj,1], iflag, eps, sk[nk,1], tk[nk,1] )
+        SET_INPUT nj = size(xj,1)
+        SET_INPUT nk = size(sk,1)
+        SOURCES nufft2df90.f dfftpack.f next235.f
+        void nufft2d3f90(int nj,double *xj,double *yj,double *cj,int iflag,double eps,int nk,double *sk,double *tk,double *fk,int *ier);
+        % xj,yj are the nonuniform locations and cj are the input values in space
+        % sk,tk are the nonuniform locations and fk are the output values in fourier space
+
+
+######### 3 DIMENSIONS #########
+
+    %%% TYPE 1 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    MCWRAP [ COMPLEX fk[ms,mt,mu], ier[1,1] ] = nufft3d1f90( xj[nj,1], yj[nj,1], zj[nj,1], COMPLEX cj[nj,1], iflag, eps, ms, mt, mu )
+        SET_INPUT nj = size(xj,1)
+        SOURCES nufft3df90.f dfftpack.f next235.f
+        void nufft3d1f90(int nj,double *xj,double *yj,double *zj,double *cj,int iflag,double eps,int ms,int mt,int mu,double *fk,int *ier);
+        % xj,yj,zj are the nonuniform locations and cj are the input values in space
+        % fk are the output values on uniform grid in fourier space
+
+    %%% TYPE 2 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    MCWRAP [ COMPLEX cj[nj,1], ier[1,1] ] = nufft3d2f90( xj[nj,1], yj[nj,1], zj[nj,1], iflag, eps, COMPLEX fk[ms,mt,mu] )
+        SET_INPUT nj = size(xj,1)
+        SET_INPUT ms = size(fk,1)
+        SET_INPUT mt = size(fk,2)
+        SET_INPUT mu = size(fk,3)
+        SOURCES nufft3df90.f dfftpack.f next235.f
+        void nufft3d2f90(int nj,double *xj,double *yj,double *zj,double *cj,int iflag,double eps,int ms,int mt,int mu,double *fk,int *ier);
+        % xj,yj,zj are the nonuniform locations and cj are the output values in space
+        % fk are the input values on uniform grid in fourier space
+
+    %%% TYPE 3 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    MCWRAP [ COMPLEX fk[nk,1], ier[1,1] ] = nufft3d3f90( xj[nj,1], yj[nj,1], zj[nj,1], COMPLEX cj[nj,1], iflag, eps, sk[nk,1], tk[nk,1], uk[nk,1] )
+        SET_INPUT nj = size(xj,1)
+        SET_INPUT nk = size(sk,1)
+        SOURCES nufft3df90.f dfftpack.f next235.f
+        void nufft3d3f90(int nj,double *xj,double *yj,double *zj,double *cj,int iflag,double eps,int nk,double *sk,double *tk,double *uk,double *fk,int *ier);
+        % xj,yj,zj are the nonuniform locations and cj are the input values in space
+        % sk,tk,uk are the nonuniform locations and fk are the output values in fourier space
+    

@@ -1,0 +1,42 @@
+This directory contains MATLAB wrapped Fortran code for the
+1D, 2D and 3D NUFFTs. The mex wrapping was performed using mcwrap.
+
+nufft*df90.f contains NUFFT routines of types 1,2,3 with dynamic F90 
+workspace allocation.
+
+next235.f contains a utility routine that finds a highly composite 
+integer greater than a given number. 
+
+dfftpack.f contains a double precision FFT package from Netlib.
+
+nufft*d*f90.m contains the "help" input/outputs for each routine
+
+You must first compile the mex files by running
+> compile_mex_nufft
+from within the MATLAB console
+
+Then try
+> nufft_tests
+to test all 9 routines
+
+The nufft.mcwrap contains syntax that tells the mcwrap program
+how to auto-generate the mex source code, which is found in the
+_mcwrap subdirectory.
+
+Release notes:
+c
+c  NUFFT 1.2 : Jan 20, 2009.
+c              First external release.
+c
+c  NUFFT 1.3 : Nov 28, 2011.
+c              Adjust parameters and constants for double/quad precision.
+c              Add Matlab/Octave wrappers and mex files.
+c
+c  NUFFT 1.3.3 : Nov 8, 2014.
+c              Mergerd into a single release for all dimensions
+c              with minor fixes, documentation modification.
+c
+c  This present directory contains a mcwrap'ed version of NUFFT 1.3.3
+c
+
+See: https://github.com/magland/mcwrap
