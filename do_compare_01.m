@@ -8,16 +8,16 @@ eps=1e-3;
 
 % Create input data
 E=create_3d_radial_example(200,200,200);
-%E=create_random_sampling_example(8e6);
+%E=create_random_sampling_example(150^3);
 %E=create_single_point_example([pi/5,pi/7,pi/9]);
 xyz=cat(2,E.x,E.y,E.z);
 d=E.d;
-N1=200; N2=200; N3=200;
+N1=150; N2=150; N3=150;
 
 % gold standard
 opts_blocknufft_gold.eps=1e-10;
-opts_blocknufft_gold.K1=20; opts_blocknufft_gold.K2=20; opts_blocknufft_gold.K3=20;
-opts_blocknufft_gold.num_threads=1;
+opts_blocknufft_gold.K1=40; opts_blocknufft_gold.K2=40; opts_blocknufft_gold.K3=40;
+opts_blocknufft_gold.num_threads=20;
 
 %nufft3d1f90
 opts_nufft3d1f90.eps=eps;
@@ -39,8 +39,10 @@ opts_blocknufft_multithread.num_threads=20;
 opts_fessler.oversamp=2;
 opts_fessler.spreadR=6;
 
+% Uncomment the algorithms you want to test/compare
+% Gold standard uses eps=1e-10
 algorithms={
-    %struct('name','gold standard','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_gold)
+    struct('name','gold standard','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_gold)
     %struct('name','nufft fortran','alg_init',@alg_trivial_init,'alg_run',@alg_nufft3d1f90,'algopts',opts_nufft3d1f90)
     %struct('name','blocknufft','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft)
     %struct('name','blocknufft-b','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_blocking)
