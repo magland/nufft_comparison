@@ -2,7 +2,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include "omp.h"
-#include "blocknufft3d.h"
+#include "blocknufft3d_2.h"
 #include <chrono>
 #include "qute.h"
 

@@ -10,7 +10,7 @@ class QTimePrivate {
 public:
     QTime *q;
 
-	time_t m_start_time;
+    struct timespec m_start_time;
 
 };
 
@@ -26,13 +26,17 @@ QTime::~QTime()
 
 void QTime::start()
 {
-	d->m_start_time=clock();
+    clock_gettime(CLOCK_MONOTONIC, &d->m_start_time);
 }
 
 int QTime::elapsed()
 {
-	time_t t2 = clock();
-	return t2-d->m_start_time;
+    struct timespec t2;
+    clock_gettime(CLOCK_MONOTONIC, &t2);
+    double elapsed;
+    elapsed = (t2.tv_sec - d->m_start_time.tv_sec);
+    elapsed += (t2.tv_nsec - d->m_start_time.tv_nsec) / 1000000000.0;
+    return (int)(elapsed*1000);
 }
 
 int qrand()
