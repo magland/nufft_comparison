@@ -16,7 +16,7 @@ TEMPLATE = app
 
 
 SOURCES += main.cpp \
-    blocknufft3d_2.cpp \
+    blocknufft3d.cpp \
     qute.cpp
 
 QMAKE_LFLAGS += -fopenmp
@@ -24,7 +24,7 @@ QMAKE_CXXFLAGS += -fopenmp -std=c++11
 LIBS += -fopenmp -lfftw3 -lfftw3_threads
 
 HEADERS += \
-    blocknufft3d_2.h \
+    blocknufft3d.h \
     qute.h
 
 #INCLUDEPATH += ../pebble/mdaio

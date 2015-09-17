@@ -7,8 +7,8 @@ nufft_comparison_setup;
 eps=1e-3;
 
 % Create input data
-E=create_3d_radial_example(200,200,200);
-%E=create_random_sampling_example(150^3);
+%E=create_3d_radial_example(200,200,200);
+E=create_random_sampling_example(200^3);
 %E=create_single_point_example([pi/5,pi/7,pi/9]);
 xyz=cat(2,E.x,E.y,E.z);
 d=E.d;
@@ -29,7 +29,7 @@ opts_blocknufft.num_threads=1;
 
 %blocknufft with blocking
 opts_blocknufft_blocking=opts_blocknufft;
-opts_blocknufft_blocking.K1=40; opts_blocknufft_blocking.K2=40; opts_blocknufft_blocking.K3=40;
+opts_blocknufft_blocking.K1=80; opts_blocknufft_blocking.K2=80; opts_blocknufft_blocking.K3=80;
 
 %blocknufft with multiple threads
 opts_blocknufft_multithread=opts_blocknufft_blocking;
@@ -42,10 +42,10 @@ opts_fessler.spreadR=6;
 % Uncomment the algorithms you want to test/compare
 % Gold standard uses eps=1e-10
 algorithms={
-    struct('name','gold standard','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_gold)
-    %struct('name','nufft fortran','alg_init',@alg_trivial_init,'alg_run',@alg_nufft3d1f90,'algopts',opts_nufft3d1f90)
-    %struct('name','blocknufft','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft)
-    %struct('name','blocknufft-b','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_blocking)
+    %struct('name','gold standard','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_gold)
+    struct('name','nufft fortran','alg_init',@alg_trivial_init,'alg_run',@alg_nufft3d1f90,'algopts',opts_nufft3d1f90)
+    struct('name','blocknufft','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft)
+    struct('name','blocknufft-b','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_blocking)
     struct('name','blocknufft-mb','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_multithread)
     %struct('name','nufft Fessler','alg_init',@alg_fessler_init,'alg_run',@alg_fessler_run,'algopts',opts_fessler)
 };
