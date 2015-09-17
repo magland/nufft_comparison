@@ -41,6 +41,7 @@ int main(int argc, char *argv[])
 
     free(uniform_d);
     free(spread);
+    free(xyz);
     free(nonuniform_d);
 
 	return 0;
