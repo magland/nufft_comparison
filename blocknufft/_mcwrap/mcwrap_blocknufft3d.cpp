@@ -25,7 +25,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
       if (nlhs==0) nlhs=1;
       if (nrhs!=10)
          mexErrMsgTxt("Incorrect number of inputs"); 
-      else if (nlhs>2)
+      else if (nlhs>1)
          mexErrMsgTxt ("Too many outputs.");
 
       // mexPrintf("test A.2\n");
@@ -129,29 +129,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
             output_uniform_d_im=mxGetPi(plhs[1-1]);
         }
         output_uniform_d=(double *)malloc(sizeof(double)*((input_N1)*(input_N2)*(input_N3))*2);
-        //spread
-        double *output_spread_re;
-        double *output_spread_im;
-        double *output_spread;
-        if (2<=nlhs) {
-        if ((3<1)||(3>20)) {
-          mexErrMsgTxt("Bad number of dimensions for my taste: 3"); 
-        }
-        {
-            int dims2[]={ input_N1 * 2,input_N2 * 2,input_N3 * 2 };
-            for (long ii=0; ii<3; ii++) {
-                if ((dims2[ii]<1)||(dims2[ii]>10000000000.0)) {
-                  mexErrMsgTxt ("Bad array size for my taste: input_N1 * 2,input_N2 * 2,input_N3 * 2"); 
-                }
-            }
-        }
-        
-            mwSize dims[]={ input_N1 * 2,input_N2 * 2,input_N3 * 2 };
-            plhs[2-1]=mxCreateNumericArray(3,dims,mxDOUBLE_CLASS,mxCOMPLEX);
-            output_spread_re=mxGetPr(plhs[2-1]);
-            output_spread_im=mxGetPi(plhs[2-1]);
-        }
-        output_spread=(double *)malloc(sizeof(double)*((input_N1 * 2)*(input_N2 * 2)*(input_N3 * 2))*2);
 
     
       //mexPrintf("test D\n");
@@ -162,7 +139,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         input_N3,
         input_M,
         output_uniform_d,
-        output_spread,
         input_xyz,
         input_nonuniform_d,
         input_eps,
@@ -189,14 +165,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
             }
         }
         free(output_uniform_d);
-        //spread
-        if (2<=nlhs) {
-            for (long ii=0; ii<(input_N1 * 2)*(input_N2 * 2)*(input_N3 * 2); ii++) {
-                output_spread_re[ii]=output_spread[ii*2];
-                output_spread_im[ii]=output_spread[ii*2+1];
-            }
-        }
-        free(output_spread);
 
       //mexPrintf("test G\n");
 

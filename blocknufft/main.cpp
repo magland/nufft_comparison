@@ -16,7 +16,6 @@ int main(int argc, char *argv[])
     int N3=200;
     int M=200*200*200;
     double *uniform_d=(double *)malloc(sizeof(double)*N1*N2*N3*2); //the output (complex)
-    double *spread=(double *)malloc(sizeof(double)*N1*N2*N3*8*2); //an output for debugging -- to be removed later
     double *xyz=(double *)malloc(sizeof(double)*M*3); //the input sample locations
     double *nonuniform_d=(double *)malloc(sizeof(double)*M*2); //the input data values (complex)
     double eps=1e-3; //this will determine the spreading kernel size! 1e-3 gives 8, 1e-6 gives 16, I believe
@@ -37,10 +36,9 @@ int main(int argc, char *argv[])
 
     //here is the procedure...
     printf("Running blocknufft3d...\n");
-    blocknufft3d(N1,N2,N3,M,uniform_d,spread,xyz,nonuniform_d,eps,K1,K2,K3,num_threads);
+    blocknufft3d(N1,N2,N3,M,uniform_d,xyz,nonuniform_d,eps,K1,K2,K3,num_threads);
 
     free(uniform_d);
-    free(spread);
     free(xyz);
     free(nonuniform_d);
 

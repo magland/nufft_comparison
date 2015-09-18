@@ -7,7 +7,6 @@
 		{"prole":"input","ptype":"int","pname":"N3","dimensions":[],"is_complex":"0","set_value":""},
 		{"prole":"set_input","ptype":"int","pname":"M","dimensions":[],"is_complex":"0","set_value":"mcwrap_size(<xyz>,1)"},
 		{"prole":"output","ptype":"double*","pname":"uniform_d","dimensions":[" $N1$"," $N2$"," $N3$"],"is_complex":"1","set_value":""},
-		{"prole":"output","ptype":"double*","pname":"spread","dimensions":[" $N1$ * 2"," $N2$ * 2"," $N3$ * 2"],"is_complex":"1","set_value":""},
 		{"prole":"input","ptype":"double*","pname":"xyz","dimensions":[" $M$"," 3"],"is_complex":"0","set_value":""},
 		{"prole":"input","ptype":"double*","pname":"nonuniform_d","dimensions":[" $M$"," 1"],"is_complex":"1","set_value":""},
 		{"prole":"input","ptype":"double","pname":"eps","dimensions":[],"is_complex":"0","set_value":""},

@@ -88,7 +88,7 @@ struct BlockData {
 };
 
 // Here's the nufft!
-bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *spread,double *x,double *y,double *z,double *d) {
+bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *y,double *z,double *d) {
     QTime timer0;
     QTime timer_total; timer_total.start();
 
@@ -235,10 +235,6 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *spread,dou
             }
         }
     }
-    for (int ii=0; ii<N1oN2oN3o; ii++) {
-        spread[ii*2]=out_oversamp[ii*2];
-        spread[ii*2+1]=out_oversamp[ii*2+1];
-    }
     printf("  --- Elapsed: %d ms\n",timer0.elapsed());
 
     //free block data
@@ -304,7 +300,7 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *spread,dou
 }
 
 // This is the mcwrap interface
-void blocknufft3d(int N1,int N2,int N3,int M,double *uniform_d,double *spread,double *xyz,double *nonuniform_d,double eps,int K1,int K2,int K3,int num_threads) {
+void blocknufft3d(int N1,int N2,int N3,int M,double *uniform_d,double *xyz,double *nonuniform_d,double eps,int K1,int K2,int K3,int num_threads) {
 	BlockNufft3DOptions opts;
 	opts.eps=eps;
 	opts.K1=K1; opts.K2=K2; opts.K3=K3;
@@ -315,7 +311,7 @@ void blocknufft3d(int N1,int N2,int N3,int M,double *uniform_d,double *spread,do
 	double *x=&xyz[0];
 	double *y=&xyz[M];
 	double *z=&xyz[2*M];
-	blocknufft3d(opts,uniform_d,spread,x,y,z,nonuniform_d);
+    blocknufft3d(opts,uniform_d,x,y,z,nonuniform_d);
 }
 
 /////////////////////////////////////////////
@@ -549,6 +545,7 @@ void do_spreading(BlockSpread3DData &D) {
         }
 
         double kernval0=x_term1*y_term1*z_term1;
+        int uuu=0;
         for (int iz=zmin; iz<=zmax; iz++) {
             int kkk1=N1oN2o_times_2*iz; //complex index
             int iiz=iz-z_integer;
@@ -562,13 +559,16 @@ void do_spreading(BlockSpread3DData &D) {
                 if (iiy>=0) kernval2*=y_term2[iiy];
                 else kernval2*=y_term2_neg[-iiy];
                 int kkk3=kkk2+xmin*2;
-                //did the precompute for for efficiency -- note, we don't need to check for negative
-                for (int iii=0; iii<precomp_x_term2_sz; iii++) {
-                    //most of the time is spent within this code block!!!
-                    double tmp0=kernval2*precomp_x_term2[iii];
-                    D.uniform_d[kkk3]+=d0_re*tmp0;
-                    D.uniform_d[kkk3+1]+=d0_im*tmp0; //most of the time is spent on this line!!!
-                    kkk3+=2; //plus two because complex
+                {
+                    //did the precompute for for efficiency -- note, we don't need to check for negative
+                    double d0_re_times_kernval2=d0_re*kernval2;
+                    double d0_im_times_kernval2=d0_im*kernval2;
+                    for (int iii=0; iii<precomp_x_term2_sz; iii++) {
+                        //most of the time is spent within this code block!!!
+                        D.uniform_d[kkk3]+=d0_re_times_kernval2*precomp_x_term2[iii];
+                        D.uniform_d[kkk3+1]+=d0_im_times_kernval2*precomp_x_term2[iii];
+                        kkk3+=2; //plus two because complex
+                    }
                 }
             }
         }

@@ -20,11 +20,11 @@ struct BlockSpread3DOptions {
     double tau1,tau2,tau3; //spreading factor
 };
 
-bool blockspread3d(const BlockSpread3DOptions &opts,double *uniform_d,double *spread,double *x,double *y,double *z,double *nonunform_d);
+bool blockspread3d(const BlockSpread3DOptions &opts,double *uniform_d,double *x,double *y,double *z,double *nonunform_d);
 
 /* MATLAB interface using MCWRAP
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
-MCWRAP [ COMPLEX uniform_d[N1,N2,N3], COMPLEX spread[N1*2,N2*2,N3*2] ] = blocknufft3d( xyz[M,3], COMPLEX nonuniform_d[M,1], eps, N1, N2, N3, K1, K2, K3, num_threads )
+MCWRAP [ COMPLEX uniform_d[N1,N2,N3] ] = blocknufft3d( xyz[M,3], COMPLEX nonuniform_d[M,1], eps, N1, N2, N3, K1, K2, K3, num_threads )
     SET_INPUT M = size(xyz,1)
     SOURCES blocknufft3d.o qute.cpp
     MEXARGS -largeArrayDims -lm -lgomp -lfftw3 -lfftw3_threads
@@ -32,7 +32,7 @@ IMPORTANT: In order to get openmp to work properly you must generate blocknufft3
   > g++ -fopenmp -c blocknufft3d.cpp -fPIC -O3
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 */
-void blocknufft3d(int N1,int N2,int N3,int M,double *uniform_d,double *spread,double *xyz,double *nonuniform_d,double eps,int K1,int K2,int K3,int num_threads);
+void blocknufft3d(int N1,int N2,int N3,int M,double *uniform_d,double *xyz,double *nonuniform_d,double eps,int K1,int K2,int K3,int num_threads);
 
 
 #endif // BLOCKNUFFT3D_H

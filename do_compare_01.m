@@ -4,19 +4,19 @@ rng(2);
 
 nufft_comparison_setup;
 
-eps=1e-6;
+eps=1e-3;
 
 % Create input data
-%E=create_3d_radial_example(200,200,200);
-E=create_random_sampling_example(200^3);
+E=create_3d_radial_example(200,200,200);
+%E=create_random_sampling_example(200^3);
 %E=create_single_point_example([pi/5,pi/7,pi/9]);
 xyz=cat(2,E.x,E.y,E.z);
 d=E.d;
-N1=150; N2=150; N3=150;
+N1=200; N2=200; N3=200;
 
 % gold standard
 opts_blocknufft_gold.eps=1e-10;
-opts_blocknufft_gold.K1=40; opts_blocknufft_gold.K2=40; opts_blocknufft_gold.K3=40;
+opts_blocknufft_gold.K1=80; opts_blocknufft_gold.K2=80; opts_blocknufft_gold.K3=80;
 opts_blocknufft_gold.num_threads=20;
 
 %nufft3d1f90
@@ -48,6 +48,7 @@ algorithms={
     struct('name','blocknufft-b','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_blocking)
     %struct('name','blocknufft-mb','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_multithread)
     %struct('name','nufft Fessler','alg_init',@alg_fessler_init,'alg_run',@alg_fessler_run,'algopts',opts_fessler)
+    struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft,'algopts',opts_nfft)
 };
 
 results={};
@@ -153,7 +154,7 @@ end
 function X=alg_blocknufft(N1,N2,N3,xyz,d,obj,opts)
 
 
-[X,spread]=blocknufft3d(N1,N2,N3,xyz,d,opts.eps,opts.K1,opts.K2,opts.K3,opts.num_threads);
+X=blocknufft3d(N1,N2,N3,xyz,d,opts.eps,opts.K1,opts.K2,opts.K3,opts.num_threads);
 
 % P=3;
 % M=length(d);
@@ -178,5 +179,11 @@ function ret=get_used_memory
 [r,w] = unix('free | grep Mem');
 stats = str2double(regexp(w, '[0-9]*', 'match')); 
 ret=stats(2);
+
+end
+
+function plan=alg_nfft_init(N1,N2,N3,xyz,opts)
+
+obj=nufft_fessler_init(xyz,[N1,N2,N3],[spreadR,spreadR,spreadR],[oversamp*N1,oversamp*N2,oversamp*N3],[N1/2,N2/2,N3/2]);
 
 end
