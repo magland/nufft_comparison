@@ -213,8 +213,8 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
     printf("Combining uniform data...\n"); timer0.start();
     int N1oN2oN3o=N1o*N2o*N3o;
     for (int ii=0; ii<N1oN2oN3o; ii++) {
-        out_oversamp_hat[ii*2]=0;
-        out_oversamp_hat[ii*2+1]=0;
+		out_oversamp[ii*2]=0;
+		out_oversamp[ii*2+1]=0;
     }
     for (int bb=0; bb<num_blocks; bb++) {
         BlockData *BD=&(block_data[bb]);
@@ -565,8 +565,8 @@ void do_spreading(BlockSpread3DData &D) {
                     double d0_im_times_kernval2=d0_im*kernval2;
                     for (int iii=0; iii<precomp_x_term2_sz; iii++) {
                         //most of the time is spent within this code block!!!
-                        D.uniform_d[kkk3]+=d0_re_times_kernval2*precomp_x_term2[iii];
-                        D.uniform_d[kkk3+1]+=d0_im_times_kernval2*precomp_x_term2[iii];
+						D.uniform_d[kkk3]+=d0_re_times_kernval2*precomp_x_term2[iii];
+						D.uniform_d[kkk3+1]+=d0_im_times_kernval2*precomp_x_term2[iii];
                         kkk3+=2; //plus two because complex
                     }
                 }
