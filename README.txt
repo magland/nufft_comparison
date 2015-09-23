@@ -11,7 +11,7 @@ Create the mex for the fortran version
 Create the mex for the C++ version - a bit more complicated
 Not having an easy time using openmp in mex... so you must first creat a .o file:
 > cd blocknufft
-> g++ -fopenmp -c blocknufft3d.cpp -fPIC -O3
+> g++ -fopenmp -c blocknufft3d.cpp block3dspreader.cpp -fPIC -O3
 
 That's for Linux... need to do equivalent for other OS
 
@@ -24,6 +24,6 @@ Now take a look at do_compare_01.m
 There are various options to do various things. Sorry, no more details
 at this point.
 
-Fun FESSLER at your own risk -- uses up a lot of RAM, depending on size of data.
+Run FESSLER at your own risk -- uses up a lot of RAM, depending on size of data.
 
 
