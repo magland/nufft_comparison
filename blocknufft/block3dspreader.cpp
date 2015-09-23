@@ -81,7 +81,8 @@ void evaluate_kernel_1d(double *out,double diff,int imin,int imax,const KernelIn
 	}
 	else if (KK.kernel_type==KERNEL_TYPE_KB) {
 		for (int ii=imin; ii<=imax; ii++) {
-			//out[ii-imin]=1;
+            //out[ii-imin]=1;
+
 
 			double x=diff-ii;
 			double tmp1=1-(2*x/KK.W)*(2*x/KK.W);
@@ -93,6 +94,7 @@ void evaluate_kernel_1d(double *out,double diff,int imin,int imax,const KernelIn
                 //out[ii-imin]=besseli0(y);
                 out[ii-imin]=besseli0_approx(y);
 			}
+
 		}
 	}
 }
