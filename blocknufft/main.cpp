@@ -15,8 +15,8 @@ int main(int argc, char *argv[])
     double *uniform_d=(double *)malloc(sizeof(double)*N1*N2*N3*2); //the output (complex)
     double *xyz=(double *)malloc(sizeof(double)*M*3); //the input sample locations
     double *nonuniform_d=(double *)malloc(sizeof(double)*M*2); //the input data values (complex)
-	double eps=1e-3; //this will determine the spreading kernel size! For gaussian, 1e-3 gives 8, 1e-6 gives 16, I believe
-	int K1=80,K2=80,K3=80; //the block size for blocking. You could set these to 10000 to get just a single block.
+    double eps=1e-6; //this will determine the spreading kernel size! For gaussian, 1e-3 gives 8, 1e-6 gives 16, I believe
+    int K1=50,K2=50,K3=50; //the block size for blocking. You could set these to 10000 to get just a single block.
     int num_threads=1;
 	int kernel_type=KERNEL_TYPE_KB;
 

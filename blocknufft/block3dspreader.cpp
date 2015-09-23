@@ -54,8 +54,6 @@ bool check_valid_inputs(BlockData *BD) {
 			return false;
 		}
 	}
-
-    printf ("inputs are okay.\n");
 	return true;
 }
 
@@ -188,24 +186,18 @@ void do_spreading(BlockData *BD) {
 
 // Here's the spreading!
 bool blockspread3d(BlockData *BD) {
-	QTime timer0;
-    printf ("Starting blockspread3d...\n");
+    QTime timer0; timer0.start();
 
 	// Transfer opts and other parameters to D
 
 	//Check to see if we have valid inputs
-    printf ("Checking inputs...\n"); timer0.start();
 	if (!check_valid_inputs(BD)) {
 		for (int i=0; i<BD->N1o*BD->N2o*BD->N3o*2; i++) BD->uniform_d[i]=0;
 		return false;
 	}
-    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
 
-    printf ("spreading...\n"); timer0.start();
 	do_spreading(BD);
-    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
-
-    printf ("################################################# elapsed for blockspread3d: %d\n",timer0.elapsed());
+    printf ("############# elapsed for blockspread3d (%d x %d x %d) M=%d: %d\n",BD->N1o,BD->N2o,BD->N3o,BD->M,timer0.elapsed());
 
 	return true;
 }
