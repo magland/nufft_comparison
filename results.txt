@@ -1,0 +1,82 @@
+========================================================
+Type 1 transform: 8e6 random samples -> 200x200x200 grid
+
+Max. differences:
+                  gold standard   nufft fortran    blocknufft-g      blocknufft    blocknufft-b   blocknufft-mb   nufft Fessler            nfft 
+  gold standard               0     3.96888e-06     3.96888e-06      1.8906e-06      1.8906e-06      1.8906e-06     1.77069e-06     3.90413e-06 
+  nufft fortran     3.96888e-06               0     1.20198e-13     4.94165e-06     4.94165e-06     4.94165e-06     3.46795e-06     5.50073e-06 
+   blocknufft-g     3.96888e-06     1.20198e-13               0     4.94165e-06     4.94165e-06     4.94165e-06     3.46795e-06     5.50073e-06 
+     blocknufft      1.8906e-06     4.94165e-06     4.94165e-06               0     5.27711e-15     5.27711e-15     2.73232e-06     3.71109e-06 
+   blocknufft-b      1.8906e-06     4.94165e-06     4.94165e-06     5.27711e-15               0               0     2.73232e-06     3.71109e-06 
+  blocknufft-mb      1.8906e-06     4.94165e-06     4.94165e-06     5.27711e-15               0               0     2.73232e-06     3.71109e-06 
+  nufft Fessler     1.77069e-06     3.46795e-06     3.46795e-06     2.73232e-06     2.73232e-06     2.73232e-06               0     4.37281e-06 
+        nfft-m      3.90413e-06     5.50073e-06     5.50073e-06     3.71109e-06     3.71109e-06     3.71109e-06     4.37281e-06               0 
+
+Avg. differences:
+                  gold standard   nufft fortran    blocknufft-g      blocknufft    blocknufft-b   blocknufft-mb   nufft Fessler            nfft 
+  gold standard               0     2.07886e-07     2.07886e-07     2.49475e-07     2.49475e-07     2.49475e-07     1.24768e-07     3.28137e-07 
+  nufft fortran     2.07886e-07               0     1.39329e-14      2.9976e-07      2.9976e-07      2.9976e-07      2.7132e-07      4.1047e-07 
+   blocknufft-g     2.07886e-07     1.39329e-14               0      2.9976e-07      2.9976e-07      2.9976e-07      2.7132e-07      4.1047e-07 
+     blocknufft     2.49475e-07      2.9976e-07      2.9976e-07               0     7.79438e-16     7.79438e-16      2.8604e-07     4.16113e-07 
+   blocknufft-b     2.49475e-07      2.9976e-07      2.9976e-07     7.79438e-16               0               0      2.8604e-07     4.16113e-07 
+  blocknufft-mb     2.49475e-07      2.9976e-07      2.9976e-07     7.79438e-16               0               0      2.8604e-07     4.16113e-07 
+  nufft Fessler     1.24768e-07      2.7132e-07      2.7132e-07      2.8604e-07      2.8604e-07      2.8604e-07               0     3.53899e-07 
+         nfft-m     3.28137e-07      4.1047e-07      4.1047e-07     4.16113e-07     4.16113e-07     4.16113e-07     3.53899e-07               0 
+
+      Algorithm   Init time (s)    Run time (s)        RAM (GB)
+  gold standard           0.000          15.833               0        Blocknufft with high precision (multi-threaded)
+  nufft fortran           0.000         127.783               0        Leslie's implementation (Gaussian kernel)
+   blocknufft-g           0.000         108.557               0        Using Gaussian kernel -- other blocknufft use Kaiser-Bessel
+     blocknufft           0.000          41.269               0        No blocking
+   blocknufft-b           0.000          25.162               0        With blocking
+  blocknufft-mb           0.000           7.037               0        With blocking and multiple threads (10)
+  nufft Fessler         910.304          19.552             180        spreadR = 7
+           nfft          66.367         195.759             4.0        nfft with multi-threading off -- used m=3 as below
+         nfft-m         115.749          33.455             3.3        nfft with multi-threading on
+
+
+Command for nfft:
+     opts.m=3
+     plan=nfft(3,N,M,n,n,n,opts.m,bitor(PRE_PHI_HUT,bitor(PRE_PSI,NFFT_OMP_BLOCKWISE_ADJOINT)),FFTW_MEASURE);
+
+Command for Fessler:
+    spreadR=7;
+    oversamp=2;
+    obj=nufft_fessler_init(xyz,[N1,N2,N3],[spreadR,spreadR,spreadR],[oversamp*N1,oversamp*N2,oversamp*N3],[N1/2,N2/2,N3/2]);
+
+Blocknufft uses an approximation to KB kernel to save time.
+    Without that approximation, time for blocknufft-b was 37 s instead of 25, with practically identical precision
+
+
+
+========================================================
+Type 1 transform: 8e6 samples of 3D radial data -> 200x200x200 grid
+
+Max. differences:
+                  gold standard   nufft fortran    blocknufft-g      blocknufft    blocknufft-b   blocknufft-mb 
+  gold standard               0     3.48692e-06     3.48692e-06      1.7308e-06      1.7308e-06      1.7308e-06 
+  nufft fortran     3.48692e-06               0     9.95617e-14     4.17168e-06     4.17168e-06     4.17168e-06 
+   blocknufft-g     3.48692e-06     9.95617e-14               0     4.17168e-06     4.17168e-06     4.17168e-06 
+     blocknufft      1.7308e-06     4.17168e-06     4.17168e-06               0     4.65022e-15     4.65022e-15 
+   blocknufft-b      1.7308e-06     4.17168e-06     4.17168e-06     4.65022e-15               0               0 
+  blocknufft-mb      1.7308e-06     4.17168e-06     4.17168e-06     4.65022e-15               0               0 
+
+Avg. differences:
+                  gold standard   nufft fortran    blocknufft-g      blocknufft    blocknufft-b   blocknufft-mb 
+  gold standard               0     1.96289e-07     1.96289e-07     2.36282e-07     2.36282e-07     2.36282e-07 
+  nufft fortran     1.96289e-07               0     1.20991e-14     2.82837e-07     2.82837e-07     2.82837e-07 
+   blocknufft-g     1.96289e-07     1.20991e-14               0     2.82837e-07     2.82837e-07     2.82837e-07 
+     blocknufft     2.36282e-07     2.82837e-07     2.82837e-07               0     7.77048e-16     7.77048e-16 
+   blocknufft-b     2.36282e-07     2.82837e-07     2.82837e-07     7.77048e-16               0               0 
+  blocknufft-mb     2.36282e-07     2.82837e-07     2.82837e-07     7.77048e-16               0               0 
+
+      Algorithm   Init time (s)    Run time (s)        RAM (GB)
+  gold standard           0.000          16.742               0
+  nufft fortran           0.000          41.141               0
+   blocknufft-g           0.000          32.737               0
+     blocknufft           0.000          22.001               0
+   blocknufft-b           0.000          21.079               0
+  blocknufft-mb           0.000           8.762               0
+           nfft          68.440         171.005             3.9
+           
+
