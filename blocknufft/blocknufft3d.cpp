@@ -63,12 +63,6 @@ void setup_lookup_exp3(double tau) {
 
 // Here's the nufft!
 bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *y,double *z,double *d) {
-
-	if (fork()==0) {
-		printf("\n\n\nI've been forked!!!! Now I will die!!!!!\n\n\n");
-		exit(0);
-	}
-
 	QTime timer0;
 	QTime timer_total; timer_total.start();
 

@@ -4,6 +4,9 @@
 #include <math.h>
 #include "besseli.h"
 #include "omp.h"
+#include "unistd.h"
+#include <stdlib.h>
+#include <sys/wait.h>
 
 // The following is needed because incredibly C++ does not seem to have a round() function
 #define ROUND_2_INT(f) ((int)(f >= 0.0 ? (f + 0.5) : (f - 0.5)))
@@ -79,6 +82,7 @@ void evaluate_kernel_1d(double *out,double diff,int imin,int imax,const KernelIn
 	else if (KK.kernel_type==KERNEL_TYPE_KB) {
 		for (int ii=imin; ii<=imax; ii++) {
 			//out[ii-imin]=1;
+
 			double x=diff-ii;
 			double tmp1=1-(2*x/KK.W)*(2*x/KK.W);
 			if (tmp1<0) {
@@ -127,7 +131,6 @@ void do_spreading(BlockData *BD) {
 		}
 		int iix=xmin-(x_integer-BD->KK1->nspread/2);
 
-
 		int ymin,ymax;
 		if (y_diff<0) {
 			ymin=fmax(y_integer-BD->KK2->nspread/2,0);
@@ -150,6 +153,39 @@ void do_spreading(BlockData *BD) {
 		}
 		int iiz=zmin-(z_integer-BD->KK3->nspread/2);
 
+		/*
+		int NNN=(zmax-zmin+1)*(ymax-ymin+1)*(xmax-xmin+1);
+		double kernel0[NNN];
+		int kkk_increments[NNN];
+
+		int xmax_minus_xmin_plus_iix=xmax-xmin+iix;
+		//int xmin_times_2=xmin*2;
+		int iii=0;
+		for (int iz=zmin; iz<=zmax; iz++) {
+			double kernval_00=z_kernel[iz-zmin+iiz];
+			for (int iy=ymin; iy<=ymax; iy++) {
+				double kernval_01=kernval_00*y_kernel[iy-ymin+iiy];
+				for (int ix0=iix; ix0<=xmax_minus_xmin_plus_iix; ix0++) {
+					//A lot time is spent inside this inner-most loop
+					kernel0[iii]=x_kernel[ix0]*kernval_01;
+					kkk_increments[iii]+=2;
+					iii++;
+				}
+				kkk_increments[iii]+=
+			}
+		}
+
+		//this loop takes a lot of time.
+		int kkk=0;
+		for (int jjj=0; jjj<NNN; jjj++) {
+			BD->uniform_d[kkk]+=kernel0[jjj]*d0_re;
+			BD->uniform_d[kkk+1]+=kernel0[jjj]*d0_im;
+			kkk+=2;
+		}
+		*/
+
+
+
 		int xmax_minus_xmin_plus_iix=xmax-xmin+iix;
 		int xmin_times_2=xmin*2;
 		for (int iz=zmin; iz<=zmax; iz++) {
@@ -170,6 +206,8 @@ void do_spreading(BlockData *BD) {
 				kkk2+=N1o_times_2; //remember complex
 			}
 		}
+
+
 	}
 }
 
@@ -194,6 +232,8 @@ bool blockspread3d(BlockData *BD) {
 	do_spreading(BD);
 	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
 
+	printf("################################################# elapsed for blockspread3d: %d\n",timer0.elapsed());
+
 	return true;
 }
 
@@ -207,6 +247,23 @@ void Block3DSpreader::setParallel(int parallel_type, int num_threads)
 {
 	d->m_parallel_type=parallel_type;
 	d->m_num_threads=num_threads;
+}
+
+pid_t blockspread3d_fork(BlockData *BD) {
+	pid_t pid=fork();
+	if (pid==0) { //child
+		printf("Running forked child...\n");
+		blockspread3d(BD);
+		printf("Forked child finished.\n");
+		exit(0);
+	}
+	else if (pid>0) { //parent
+		return pid;
+	}
+	else {
+		printf("ERROR: Unable to fork process!\n");
+		return 0;
+	}
 }
 
 void Block3DSpreader::run()
@@ -229,6 +286,32 @@ void Block3DSpreader::run()
 			}
 		}
 	}
+	else if (d->m_parallel_type==PARALLEL_FORK) {
+		int pids[num_blocks];
+		int bb=0;
+		int num_completed=0;
+		while (bb<num_blocks) {
+			while (bb-num_completed<d->m_num_threads) {
+				BlockData *BD=d->m_blocks.value(bb);
+				int pid=blockspread3d_fork(BD);
+				pids[bb]=pid;
+				bb++;
+			}
+			int status=-1;
+			if (pids[num_completed]>0) {
+				waitpid(pids[num_completed],&status,WUNTRACED);
+			}
+			if (status!=0) {
+				printf("ERROR: Child process failed.\n");
+			}
+			else {
+				printf("Forked child completed.\n");
+			}
+			num_completed++;
+		}
+	}
 }
+
+
 
 
