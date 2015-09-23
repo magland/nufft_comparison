@@ -17,4 +17,5 @@ addpath([path0,'/../nfft-3.3.0/matlab/nfft']);
 % > ./configure --with-matlab-arch=glnxa64 --with-matlab=/home/magland/MATLAB/ --enable-all --enable-openmp
 % Change /home/magland/MATLAB/ to appropriate matlab path and change glnxa64 to appropriate architecture
 % > make
+% Note: to test with only a single thread, emit --enable-all and --enable-openmp
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

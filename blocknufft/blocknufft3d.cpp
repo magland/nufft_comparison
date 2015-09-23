@@ -45,7 +45,6 @@ double s_lookup_exp1[MAX_LOOKUP_EXP];
 double s_lookup_exp2[MAX_LOOKUP_EXP];
 double s_lookup_exp3[MAX_LOOKUP_EXP];
 void setup_lookup_exp1(double tau) {
-	printf("SETUP LOOKUP EXP1 tau=%g\n",tau);
 	for (int i=0; i<MAX_LOOKUP_EXP; i++) {
 		s_lookup_exp1[i]=exp(-i*i*tau);
 	}
@@ -66,7 +65,7 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 	QTime timer0;
 	QTime timer_total; timer_total.start();
 
-	printf("\nStarting blocknufft3d.\n");
+    printf ("\nStarting blocknufft3d.\n");
 
 	omp_set_num_threads(opts.num_threads);
 
@@ -136,7 +135,7 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 		nspread=nspread*2; //we need to multiply by 2, because I consider nspread as the diameter
 		double lambda=oversamp*oversamp * nspread/2 / (oversamp*(oversamp-.5));
 		double tau=M_PI/lambda;
-		printf("Using oversamp=%g, nspread=%d, tau=%g\n",oversamp,nspread,tau);
+        printf ("Using oversamp=%g, nspread=%d, tau=%g\n",oversamp,nspread,tau);
 
 		KK1.kernel_type=KERNEL_TYPE_GAUSSIAN;
 		KK2.kernel_type=KERNEL_TYPE_GAUSSIAN;
@@ -159,18 +158,18 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 		KK3.lookup_exp=s_lookup_exp3;
 	}
 	else {
-		printf("Unknown kernel type: %d\n",opts.kernel_type);
+        printf ("Unknown kernel type: %d\n",opts.kernel_type);
 		return false;
 	}
 
 	int N1o=(int)(opts.N1*oversamp); int N2o=(int)(opts.N2*oversamp); int N3o=(int)(opts.N3*oversamp);
 
-	printf("Allocating...\n"); timer0.start();
+    printf ("Allocating...\n"); timer0.start();
 	double *out_oversamp=(double *)malloc(sizeof(double)*N1o*N2o*N3o*2);
 	double *out_oversamp_hat=(double *)malloc(sizeof(double)*N1o*N2o*N3o*2);
-	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
+    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
 
-	printf("Scaling coordinates...\n"); timer0.start();
+    printf ("Scaling coordinates...\n"); timer0.start();
 	double factor_x=N1o/(2*M_PI);
 	double factor_y=N2o/(2*M_PI);
 	double factor_z=N3o/(2*M_PI);
@@ -179,10 +178,10 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 		y[ii]*=factor_y;
 		z[ii]*=factor_z;
 	}
-	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
+    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
 
 	//create blocks
-	printf("Creating blocks...\n"); timer0.start();
+    printf ("Creating blocks...\n"); timer0.start();
 	int num_blocks_x=ceil(N1o*1.0/opts.K1);
 	int num_blocks_y=ceil(N2o*1.0/opts.K2);
 	int num_blocks_z=ceil(N3o*1.0/opts.K3);
@@ -194,6 +193,9 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 			for (int i2=0; i2<num_blocks_y; i2++) {
 				for (int i1=0; i1<num_blocks_x; i1++) {
 					BlockData BD;
+                    BD.KK1=&KK1;
+                    BD.KK2=&KK2;
+                    BD.KK3=&KK3;
 					BD.xmin=i1*opts.K1; BD.xmax=fmin((i1+1)*opts.K1-1,N1o-1);
 					BD.ymin=i2*opts.K2; BD.ymax=fmin((i2+1)*opts.K2-1,N2o-1);
 					BD.zmin=i3*opts.K3; BD.zmax=fmin((i3+1)*opts.K3-1,N3o-1);
@@ -207,20 +209,25 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 			}
 		}
 	}
-	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
+    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
 
 	//compute block counts
-	printf("Computing block counts...\n"); timer0.start();
+    printf ("Computing block counts...\n"); timer0.start();
 	for (int ii=0; ii<opts.M; ii++) {
 		int i1=((int)(x[ii]))/opts.K1;
 		int i2=((int)(y[ii]))/opts.K2;
 		int i3=((int)(z[ii]))/opts.K3;
-		block_data[i1+num_blocks_x*i2+num_blocks_x*num_blocks_y*i3].M++;
+        if ((i1>=num_blocks_x)||(i2>=num_blocks_y)||(i3>=num_blocks_z)) {
+            printf ("Unexpected problem computing block counts!!!\n");
+        }
+        else {
+            block_data[i1+num_blocks_x*i2+num_blocks_x*num_blocks_y*i3].M++;
+        }
 	}
-	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
+    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
 
 	//allocate block data
-	printf("Allocating block data...\n"); timer0.start();
+    printf ("Allocating block data...\n"); timer0.start();
 	for (int bb=0; bb<num_blocks; bb++) {
 		BlockData *BD=&(block_data[bb]);
 		BD->x=(double *)malloc(sizeof(double)*BD->M);
@@ -230,27 +237,31 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 		BD->uniform_d=(double *)malloc(sizeof(double)*BD->N1o*BD->N2o*BD->N3o*2);
 		BD->jj=0;
 	}
-	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
+    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
 
 	//set block input data
-	printf("Setting block input data...\n"); timer0.start();
+    printf ("Setting block input data...\n"); timer0.start();
 	for (int ii=0; ii<opts.M; ii++) {
 		int i1=((int)(x[ii]))/opts.K1;
 		int i2=((int)(y[ii]))/opts.K2;
 		int i3=((int)(z[ii]))/opts.K3;
-		BlockData *BD=&(block_data[i1+num_blocks_x*i2+num_blocks_x*num_blocks_y*i3]);
-		int jj=BD->jj;
-		BD->x[jj]=x[ii]-BD->xmin+KK1.nspread/2;
-		BD->y[jj]=y[ii]-BD->ymin+KK2.nspread/2;
-		BD->z[jj]=z[ii]-BD->zmin+KK3.nspread/2;
-		BD->nonuniform_d[jj*2]=d[ii*2];
-		BD->nonuniform_d[jj*2+1]=d[ii*2+1];
-		BD->KK1=&KK1; BD->KK2=&KK2; BD->KK3=&KK3;
-		BD->jj++;
+        if ((i1>=num_blocks_x)||(i2>=num_blocks_y)||(i3>=num_blocks_z)) {
+            printf ("Unexpected problem setting block input data!!!\n");
+        }
+        else {
+            BlockData *BD=&(block_data[i1+num_blocks_x*i2+num_blocks_x*num_blocks_y*i3]);
+            int jj=BD->jj;
+            BD->x[jj]=x[ii]-BD->xmin+KK1.nspread/2;
+            BD->y[jj]=y[ii]-BD->ymin+KK2.nspread/2;
+            BD->z[jj]=z[ii]-BD->zmin+KK3.nspread/2;
+            BD->nonuniform_d[jj*2]=d[ii*2];
+            BD->nonuniform_d[jj*2+1]=d[ii*2+1];
+            BD->jj++;
+        }
 	}
-	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
+    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
 
-	printf("Spreading...\n"); timer0.start();
+    printf ("Spreading...\n"); timer0.start();
 	Block3DSpreader SS;
 	for (int bb=0; bb<num_blocks; bb++) {
 		BlockData *BD=&(block_data[bb]);
@@ -263,7 +274,7 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 	#pragma omp parallel
 	{
 		QTime timerBB; timerBB.start(); int num_blocks_in_this_thread=0;
-		if (omp_get_thread_num()==0) printf("#################### Using %d threads (%d prescribed)\n",omp_get_num_threads(),opts.num_threads);
+        if (omp_get_thread_num()==0) printf ("#################### Using %d threads (%d prescribed)\n",omp_get_num_threads(),opts.num_threads);
 		#pragma omp for
 		for (int bb=0; bb<num_blocks; bb++) {
 			BlockData *BD=&(block_data[bb]);
@@ -273,15 +284,15 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 			QTime timerAA; timerAA.start();
 			blockspread3d(sopts,KK1,KK2,KK3,BD->uniform_d,BD->x,BD->y,BD->z,BD->nonuniform_d);
 			num_blocks_in_this_thread++;
-			printf("TIME for single block:::: %d ms, time in this thread: %d ms, #blocks in thread: %d\n",timerAA.elapsed(),timerBB.elapsed(),num_blocks_in_this_thread);
+            printf ("TIME for single block:::: %d ms, time in this thread: %d ms, #blocks in thread: %d\n",timerAA.elapsed(),timerBB.elapsed(),num_blocks_in_this_thread);
 		}
-		if (omp_get_thread_num()==0) printf("#################### Used %d threads (%d prescribed)\n",omp_get_num_threads(),opts.num_threads);
+        if (omp_get_thread_num()==0) printf ("#################### Used %d threads (%d prescribed)\n",omp_get_num_threads(),opts.num_threads);
 	}
 	*/
 	double blockspread3d_time=timer0.elapsed();
-	printf("  For blockspread3d: %d ms\n",timer0.elapsed());
+    printf ("  For blockspread3d: %d ms\n",timer0.elapsed());
 
-	printf("Combining uniform data...\n"); timer0.start();
+    printf ("Combining uniform data...\n"); timer0.start();
 	int N1oN2oN3o=N1o*N2o*N3o;
 	for (int ii=0; ii<N1oN2oN3o; ii++) {
 		out_oversamp[ii*2]=0;
@@ -306,10 +317,10 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 			}
 		}
 	}
-	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
+    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
 
 	//free block data
-	printf("Freeing block data...\n"); timer0.start();
+    printf ("Freeing block data...\n"); timer0.start();
 	for (int bb=0; bb<num_blocks; bb++) {
 		BlockData *BD=&(block_data[bb]);
 		free(BD->x);
@@ -318,14 +329,14 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 		free(BD->nonuniform_d);
 		free(BD->uniform_d);
 	}
-	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
+    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
 
 	double spreading_time=timer_total.elapsed();
-	printf("  --- Total time for spreading: %d ms\n",(int)spreading_time);
+    printf ("  --- Total time for spreading: %d ms\n",(int)spreading_time);
 
-	printf("fft...\n"); timer0.start();
+    printf ("fft...\n"); timer0.start();
 	if (!do_fft_3d(N1o,N2o,N3o,out_oversamp_hat,out_oversamp,opts.num_threads)) {
-		printf("problem in do_fft_3d\n");
+        printf ("problem in do_fft_3d\n");
 		for (int ii=0; ii<opts.M; ii++) {
 			x[ii]/=factor_x;
 			y[ii]/=factor_y;
@@ -336,33 +347,33 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 		return false;
 	}
 	double fft_time=timer0.elapsed();
-	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
+    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
 
-	printf("fix...\n"); timer0.start();
+    printf ("fix...\n"); timer0.start();
 	do_fix_3d(opts.N1,opts.N2,opts.N3,opts.M,KK1,KK2,KK3,oversamp,out,out_oversamp_hat);
-	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
+    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
 
-	printf("Restoring coordinates...\n"); timer0.start();
+    printf ("Restoring coordinates...\n"); timer0.start();
 	for (int ii=0; ii<opts.M; ii++) {
 		x[ii]/=factor_x;
 		y[ii]/=factor_y;
 		z[ii]/=factor_z;
 	}
-	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
+    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
 
-	printf("free...\n"); timer0.start();
+    printf ("free...\n"); timer0.start();
 	free(out_oversamp_hat);
 	free(out_oversamp);
-	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
+    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
 
 	double total_time=timer_total.elapsed();
 	double other_time=total_time-spreading_time-fft_time;
 
-	printf("Elapsed time: %.3f seconds\n",total_time/1000);
-	printf("   %.3f blockspread3d, %.3f other spreading, %.3f fft, %.3f other\n",blockspread3d_time/1000,(spreading_time-blockspread3d_time)/1000,fft_time/1000,other_time/1000);
-	printf("   %.1f%% blockspread3d, %.1f%% other spreading, %.1f%% fft, %.1f%% other\n",blockspread3d_time/total_time*100,(spreading_time-blockspread3d_time)/total_time*100,fft_time/total_time*100,other_time/total_time*100);
+    printf ("Elapsed time: %.3f seconds\n",total_time/1000);
+    printf ("   %.3f blockspread3d, %.3f other spreading, %.3f fft, %.3f other\n",blockspread3d_time/1000,(spreading_time-blockspread3d_time)/1000,fft_time/1000,other_time/1000);
+    printf ("   %.1f%% blockspread3d, %.1f%% other spreading, %.1f%% fft, %.1f%% other\n",blockspread3d_time/total_time*100,(spreading_time-blockspread3d_time)/total_time*100,fft_time/total_time*100,other_time/total_time*100);
 
-	printf("done with blocknufft3d.\n");
+    printf ("done with blocknufft3d.\n");
 
 	return true;
 }
@@ -432,7 +443,6 @@ void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo &KK1,KernelInfo &KK2,Kernel
 #ifdef NUFFT_ANALYTIC_CORRECTION
 
 	double lambda=M_PI/KK.tau;
-	printf("t1 = %.16f\n",M_PI * lambda / (N1b*N1b));
 
 	double *correction_vals1=(double *)malloc(sizeof(double)*(N1/2+2));
 	double *correction_vals2=(double *)malloc(sizeof(double)*(N2/2+2));

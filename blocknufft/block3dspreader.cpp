@@ -42,20 +42,20 @@ Block3DSpreader::~Block3DSpreader()
 bool check_valid_inputs(BlockData *BD) {
 	for (int m=0; m<BD->M; m++) {
 		if ((BD->x[m]<0)||(BD->x[m]>=BD->N1o)) {
-			printf("Out of range: %g, %d\n",BD->x[m],BD->N1o);
+            printf ("Out of range: %g, %d\n",BD->x[m],BD->N1o);
 			return false;
 		}
 		if ((BD->y[m]<0)||(BD->y[m]>=BD->N2o)) {
-			printf("Out of range: %g, %d\n",BD->y[m],BD->N2o);
+            printf ("Out of range: %g, %d\n",BD->y[m],BD->N2o);
 			return false;
 		}
 		if ((BD->z[m]<0)||(BD->z[m]>=BD->N3o)) {
-			printf("Out of range: %g, %d\n",BD->z[m],BD->N3o);
+            printf ("Out of range: %g, %d\n",BD->z[m],BD->N3o);
 			return false;
 		}
 	}
 
-	printf("inputs are okay.\n");
+    printf ("inputs are okay.\n");
 	return true;
 }
 
@@ -90,7 +90,8 @@ void evaluate_kernel_1d(double *out,double diff,int imin,int imax,const KernelIn
 			}
 			else {
 				double y=KK.beta*sqrt(tmp1);
-				out[ii-imin]=besseli0_approx(y);
+                //out[ii-imin]=besseli0(y);
+                out[ii-imin]=besseli0_approx(y);
 			}
 		}
 	}
@@ -98,9 +99,9 @@ void evaluate_kernel_1d(double *out,double diff,int imin,int imax,const KernelIn
 
 
 void do_spreading(BlockData *BD) {
-	double x_kernel[BD->KK1->nspread+1];
-	double y_kernel[BD->KK2->nspread+1];
-	double z_kernel[BD->KK3->nspread+1];
+    double *x_kernel=(double *)malloc(sizeof(double)*(BD->KK1->nspread+1));
+    double *y_kernel=(double *)malloc(sizeof(double)*(BD->KK2->nspread+1));
+    double *z_kernel=(double *)malloc(sizeof(double)*(BD->KK3->nspread+1));
 
 	double N1o_times_2=BD->N1o*2;
 	double N1oN2o_times_2=BD->N1o*BD->N2o*2;
@@ -153,38 +154,6 @@ void do_spreading(BlockData *BD) {
 		}
 		int iiz=zmin-(z_integer-BD->KK3->nspread/2);
 
-		/*
-		int NNN=(zmax-zmin+1)*(ymax-ymin+1)*(xmax-xmin+1);
-		double kernel0[NNN];
-		int kkk_increments[NNN];
-
-		int xmax_minus_xmin_plus_iix=xmax-xmin+iix;
-		//int xmin_times_2=xmin*2;
-		int iii=0;
-		for (int iz=zmin; iz<=zmax; iz++) {
-			double kernval_00=z_kernel[iz-zmin+iiz];
-			for (int iy=ymin; iy<=ymax; iy++) {
-				double kernval_01=kernval_00*y_kernel[iy-ymin+iiy];
-				for (int ix0=iix; ix0<=xmax_minus_xmin_plus_iix; ix0++) {
-					//A lot time is spent inside this inner-most loop
-					kernel0[iii]=x_kernel[ix0]*kernval_01;
-					kkk_increments[iii]+=2;
-					iii++;
-				}
-				kkk_increments[iii]+=
-			}
-		}
-
-		//this loop takes a lot of time.
-		int kkk=0;
-		for (int jjj=0; jjj<NNN; jjj++) {
-			BD->uniform_d[kkk]+=kernel0[jjj]*d0_re;
-			BD->uniform_d[kkk+1]+=kernel0[jjj]*d0_im;
-			kkk+=2;
-		}
-		*/
-
-
 
 		int xmax_minus_xmin_plus_iix=xmax-xmin+iix;
 		int xmin_times_2=xmin*2;
@@ -207,8 +176,10 @@ void do_spreading(BlockData *BD) {
 			}
 		}
 
-
 	}
+    free(x_kernel);
+    free(y_kernel);
+    free(z_kernel);
 }
 
 
@@ -216,23 +187,23 @@ void do_spreading(BlockData *BD) {
 // Here's the spreading!
 bool blockspread3d(BlockData *BD) {
 	QTime timer0;
-	printf("Starting blockspread3d...\n");
+    printf ("Starting blockspread3d...\n");
 
 	// Transfer opts and other parameters to D
 
 	//Check to see if we have valid inputs
-	printf("Checking inputs...\n"); timer0.start();
+    printf ("Checking inputs...\n"); timer0.start();
 	if (!check_valid_inputs(BD)) {
 		for (int i=0; i<BD->N1o*BD->N2o*BD->N3o*2; i++) BD->uniform_d[i]=0;
 		return false;
 	}
-	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
+    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
 
-	printf("spreading...\n"); timer0.start();
+    printf ("spreading...\n"); timer0.start();
 	do_spreading(BD);
-	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
+    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
 
-	printf("################################################# elapsed for blockspread3d: %d\n",timer0.elapsed());
+    printf ("################################################# elapsed for blockspread3d: %d\n",timer0.elapsed());
 
 	return true;
 }
@@ -252,16 +223,16 @@ void Block3DSpreader::setParallel(int parallel_type, int num_threads)
 pid_t blockspread3d_fork(BlockData *BD) {
 	pid_t pid=fork();
 	if (pid==0) { //child
-		printf("Running forked child...\n");
+        printf ("Running forked child...\n");
 		blockspread3d(BD);
-		printf("Forked child finished.\n");
+        printf ("Forked child finished.\n");
 		exit(0);
 	}
 	else if (pid>0) { //parent
 		return pid;
 	}
 	else {
-		printf("ERROR: Unable to fork process!\n");
+        printf ("ERROR: Unable to fork process!\n");
 		return 0;
 	}
 }
@@ -302,10 +273,10 @@ void Block3DSpreader::run()
 				waitpid(pids[num_completed],&status,WUNTRACED);
 			}
 			if (status!=0) {
-				printf("ERROR: Child process failed.\n");
+                printf ("ERROR: Child process failed.\n");
 			}
 			else {
-				printf("Forked child completed.\n");
+                printf ("Forked child completed.\n");
 			}
 			num_completed++;
 		}
