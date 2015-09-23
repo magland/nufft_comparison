@@ -151,6 +151,17 @@ void test_thread() {
 }
 */
 
+void test_list() {
+	QList<int> list;
+	printf("test_list\n");
+	for (int i=0; i<20; i++) {
+		list.append(i);
+	}
+	for (int i=0; i<list.count(); i++) {
+		printf("%d: %d\n",i,list.value(i));
+	}
+}
+
 int main(int argc, char *argv[])
 {
 
@@ -158,6 +169,7 @@ int main(int argc, char *argv[])
 	//test_qthread();
 	//test_fork();
 	//test_thread();
+	test_list();
 
 	return 0;
 

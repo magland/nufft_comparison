@@ -17,7 +17,8 @@ TEMPLATE = app
 
 SOURCES += main.cpp \
     blocknufft3d.cpp \
-    besseli.cpp
+    besseli.cpp \
+    block3dspreader.cpp
 
 QMAKE_LFLAGS += -fopenmp
 QMAKE_CXXFLAGS += -fopenmp -std=c++11
@@ -25,7 +26,8 @@ LIBS += -fopenmp -lfftw3 -lfftw3_threads
 
 HEADERS += \
     blocknufft3d.h \
-    besseli.h
+    besseli.h \
+    block3dspreader.h
 
 HEADERS += qute.h
 SOURCES += qute.cpp

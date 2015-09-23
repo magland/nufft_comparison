@@ -58,3 +58,5 @@ QString::~QString()
 {
     delete d;
 }
+
+

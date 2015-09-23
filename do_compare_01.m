@@ -4,11 +4,11 @@ rng(2);
 
 nufft_comparison_setup;
 
-eps=1e-6;
+eps=1e-4;
 
 % Create input data
 %E=create_3d_radial_example(100,100,100);
-E=create_random_sampling_example(8e6);
+E=create_random_sampling_example(1e6);
 %E=create_single_point_example([pi/5+pi,pi/7,pi/9]);
 %E=create_single_point_example([0,0,0]);
 %E=create_single_point_example([pi/3,pi/6,pi/7]);
@@ -59,12 +59,12 @@ opts_nfft_m7.m=7;
 % Uncomment the algorithms you want to test/compare
 % Gold standard uses eps=1e-10
 algorithms={
-    %struct('name','gold standard','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_gold)
+    struct('name','gold standard','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_gold)
     %struct('name','nufft fortran','alg_init',@alg_trivial_init,'alg_run',@alg_nufft3d1f90,'algopts',opts_nufft3d1f90)
     %struct('name','blocknufft-g','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_gaussian)
     struct('name','blocknufft','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft)
-    %struct('name','blocknufft-b','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_blocking)
-    %struct('name','blocknufft-mb','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_multithread)
+    struct('name','blocknufft-b','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_blocking)
+    struct('name','blocknufft-mb','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_multithread)
     %struct('name','nufft Fessler','alg_init',@alg_fessler_init,'alg_run',@alg_fessler_run,'algopts',opts_fessler)
     %struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m1)
     %struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m2)
