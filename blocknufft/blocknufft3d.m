@@ -1,6 +1,6 @@
 %BLOCKNUFFT3D - 
 %
-% Syntax:  [uniform_d] = blocknufft3d(N1, N2, N3, xyz, nonuniform_d, eps, K1, K2, K3, num_threads)
+% Syntax:  [uniform_d] = blocknufft3d(N1, N2, N3, xyz, nonuniform_d, eps, K1, K2, K3, num_threads, kernel_type)
 %
 % Inputs:
 %    N1 - int
@@ -13,6 +13,7 @@
 %    K2 - int
 %    K3 - int
 %    num_threads - int
+%    kernel_type - int
 %
 % Outputs:
 %    uniform_d - complex double (N1,N2,N3)

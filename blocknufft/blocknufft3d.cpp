@@ -5,28 +5,42 @@
 #include "qute.h"
 #include "omp.h"
 #include "fftw3.h"
+#include "besseli.h"
+#include "unistd.h"
 
 //#define NUFFT_ANALYTIC_CORRECTION
 
 // The following is needed because incredibly C++ does not seem to have a round() function
 #define ROUND_2_INT(f) ((int)(f >= 0.0 ? (f + 0.5) : (f - 0.5)))
 
-// These are the the pre-computed exponentials (static variables)
-double *s_exp_lookup1=0;
-double *s_exp_lookup2=0;
-double *s_exp_lookup3=0;
-void exp_lookup_init(double tau1,double tau2,double tau3);
-void exp_lookup_destroy();
+// Info for the spreading kernel
+struct KernelInfo {
+	int kernel_type;
+
+	int nspread;
+
+	//for gaussian
+	double tau;
+	double *lookup_exp;
+
+	//for KB
+	double W;
+	double beta;
+};
 
 // This is the data needed for the spreading
 struct BlockSpread3DData {
 	int M; // Number of non-uniform points
 	int N1o,N2o,N3o; // Oversampled dimensions
-	int nspread1,nspread2,nspread3; // Spreading diameters
-	double tau1,tau2,tau3; //decay rates for convolution kernel
 	double *x,*y,*z; // non-uniform locations
 	double *nonuniform_d; // non-uniform data
 	double *uniform_d; // uniform data
+};
+
+//Redundant?
+struct BlockSpread3DOptions {
+	int N1o,N2o,N3o; //size of grid
+	int M; //number of non-uniform points
 };
 
 // These are the implementation routines for spreading
@@ -35,20 +49,17 @@ void define_block_ids_and_location_codes(BlockSpread3DData &D);
 void compute_nonuniform_block_counts(BlockSpread3DData &D);
 void compute_sizes_and_block_indices(BlockSpread3DData &D);
 void set_working_nonuniform_data(BlockSpread3DData &D);
-void do_spreading(BlockSpread3DData &D);
+void do_spreading(BlockSpread3DData &D,const KernelInfo &KK1,const KernelInfo &KK2,const KernelInfo &KK3);
 void set_uniform_data(BlockSpread3DData &D);
-void free_data(BlockSpread3DData &D);
 
 // Here's the spreading!
-bool blockspread3d(const BlockSpread3DOptions &opts,double *uniform_d,double *x,double *y,double *z,double *nonuniform_d) {
+bool blockspread3d(const BlockSpread3DOptions &opts,const KernelInfo &KK1,const KernelInfo &KK2,const KernelInfo &KK3,double *uniform_d,double *x,double *y,double *z,double *nonuniform_d) {
 	QTime timer0;
 	printf("Starting blockspread3d...\n");
 
 	// Transfer opts and other parameters to D
 	BlockSpread3DData D;
 	D.N1o=opts.N1o; D.N2o=opts.N2o; D.N3o=opts.N3o;
-	D.nspread1=opts.nspread1; D.nspread2=opts.nspread2; D.nspread3=opts.nspread3;
-	D.tau1=opts.tau1; D.tau2=opts.tau2; D.tau3=opts.tau3;
 	D.M=opts.M;
 	D.x=x; D.y=y; D.z=z;
 	D.nonuniform_d=nonuniform_d;
@@ -63,12 +74,7 @@ bool blockspread3d(const BlockSpread3DOptions &opts,double *uniform_d,double *x,
 	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
 
 	printf("spreading...\n"); timer0.start();
-	do_spreading(D);
-	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
-
-	printf("freeing data...\n"); timer0.start();
-
-	free_data(D);
+	do_spreading(D,KK1,KK2,KK3);
 	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
 
 	return true;
@@ -76,7 +82,7 @@ bool blockspread3d(const BlockSpread3DOptions &opts,double *uniform_d,double *x,
 
 // A couple implementation routines for nufft
 bool do_fft_3d(int N1,int N2,int N3,double *out,double *in,int num_threads=1);
-void do_fix_3d(int N1,int N2,int N3,int M,int nspread,int oversamp,double tau,double *out,double *out_oversamp_hat);
+void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo &KK1,KernelInfo &KK2,KernelInfo &KK3,double oversamp,double *out,double *out_oversamp_hat);
 
 struct BlockData {
 	int xmin,ymin,zmin;
@@ -89,8 +95,36 @@ struct BlockData {
 	int jj;
 };
 
+//set a lookup table for fast Gaussian spreading
+#define MAX_LOOKUP_EXP 200
+double s_lookup_exp1[MAX_LOOKUP_EXP];
+double s_lookup_exp2[MAX_LOOKUP_EXP];
+double s_lookup_exp3[MAX_LOOKUP_EXP];
+void setup_lookup_exp1(double tau) {
+	printf("SETUP LOOKUP EXP1 tau=%g\n",tau);
+	for (int i=0; i<MAX_LOOKUP_EXP; i++) {
+		s_lookup_exp1[i]=exp(-i*i*tau);
+	}
+}
+void setup_lookup_exp2(double tau) {
+	for (int i=0; i<MAX_LOOKUP_EXP; i++) {
+		s_lookup_exp2[i]=exp(-i*i*tau);
+	}
+}
+void setup_lookup_exp3(double tau) {
+	for (int i=0; i<MAX_LOOKUP_EXP; i++) {
+		s_lookup_exp3[i]=exp(-i*i*tau);
+	}
+}
+
 // Here's the nufft!
 bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *y,double *z,double *d) {
+
+	if (fork()==0) {
+		printf("\n\n\nI've been forked!!!! Now I will die!!!!!\n\n\n");
+		exit(0);
+	}
+
 	QTime timer0;
 	QTime timer_total; timer_total.start();
 
@@ -98,18 +132,100 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 
 	omp_set_num_threads(opts.num_threads);
 
-	double eps=opts.eps;
-	int oversamp=2; if (eps<= 1e-11) oversamp=3;
-	int nspread=(int)(-log(eps)/(M_PI*(oversamp-1)/(oversamp-.5)) + .5) + 1; //the plus one was added -- different from docs -- aha!
-	nspread=nspread*2; //we need to multiply by 2, because I consider nspread as the diameter
-	double lambda=oversamp*oversamp * nspread/2 / (oversamp*(oversamp-.5));
-	double tau=M_PI/lambda;
-	printf("Using oversamp=%d, nspread=%d, tau=%g\n",oversamp,nspread,tau);
+	double oversamp;
 
-	//Initialize the pre-computed exponentials (do this outside a subthread!)
-	exp_lookup_init(tau,tau,tau);
+	//set up the spreading kernels
+	KernelInfo KK1,KK2,KK3;
 
-	int N1o=opts.N1*oversamp; int N2o=opts.N2*oversamp; int N3o=opts.N3*oversamp;
+	if (opts.kernel_type==KERNEL_TYPE_KB) {
+		KK1.kernel_type=KERNEL_TYPE_KB;
+		KK2.kernel_type=KERNEL_TYPE_KB;
+		KK3.kernel_type=KERNEL_TYPE_KB;
+
+		oversamp=2;
+		//int nspread=10; double fac1=0.90,fac2=1.47;
+		int nspread=12; double fac1=1,fac2=1;
+		if (opts.eps>=1e-2) {
+			nspread=4; fac1=0.75; fac2=1.71;
+		}
+		else if (opts.eps>=1e-4) {
+			nspread=6; fac1=0.83; fac2=1.56;
+		}
+		else if (opts.eps>=1e-6) {
+			nspread=8; fac1=0.89; fac2=1.45;
+		}
+		else if (opts.eps>=1e-8) {
+			nspread=10; fac1=0.90; fac2=1.47;
+		}
+		else if (opts.eps>=1e-10) {
+			nspread=12; fac1=0.92; fac2=1.51;
+		}
+		else if (opts.eps>=1e-12) {
+			nspread=14; fac1=0.94; fac2=1.48;
+		}
+		else {
+			nspread=16; fac1=0.94; fac2=1.46;
+		}
+
+		{
+			KK1.nspread=nspread;
+			KK1.W=KK1.nspread*fac1;
+			double tmp0=KK1.W*KK1.W/4-0.8;
+			if (tmp0<0) tmp0=0; //fix this?
+			KK1.beta=M_PI*sqrt(tmp0)*fac2;
+		}
+
+		{
+			KK2.nspread=nspread;
+			KK2.W=KK2.nspread*fac1;
+			double tmp0=KK2.W*KK2.W/4-0.8;
+			if (tmp0<0) tmp0=0; //fix this?
+			KK2.beta=M_PI*sqrt(tmp0)*fac2;
+		}
+
+		{
+			KK3.nspread=nspread;
+			KK3.W=KK3.nspread*fac1;
+			double tmp0=KK3.W*KK3.W/4-0.8;
+			if (tmp0<0) tmp0=0; //fix this?
+			KK3.beta=M_PI*sqrt(tmp0)*fac2;
+		}
+	}
+	else if (opts.kernel_type==KERNEL_TYPE_GAUSSIAN) {
+		double eps=opts.eps * 10; //note: jfm multiplied by 100 here!
+		oversamp=2; if (eps<= 1e-11) oversamp=3;
+		int nspread=(int)(-log(eps)/(M_PI*(oversamp-1)/(oversamp-.5)) + .5) + 1; //the plus one was added -- different from docs -- aha!
+		nspread=nspread*2; //we need to multiply by 2, because I consider nspread as the diameter
+		double lambda=oversamp*oversamp * nspread/2 / (oversamp*(oversamp-.5));
+		double tau=M_PI/lambda;
+		printf("Using oversamp=%g, nspread=%d, tau=%g\n",oversamp,nspread,tau);
+
+		KK1.kernel_type=KERNEL_TYPE_GAUSSIAN;
+		KK2.kernel_type=KERNEL_TYPE_GAUSSIAN;
+		KK3.kernel_type=KERNEL_TYPE_GAUSSIAN;
+
+
+		KK1.tau=tau;
+		KK1.nspread=nspread;
+		setup_lookup_exp1(KK1.tau);
+		KK1.lookup_exp=s_lookup_exp1;
+
+		KK2.tau=tau;
+		KK2.nspread=nspread;
+		setup_lookup_exp2(KK2.tau);
+		KK2.lookup_exp=s_lookup_exp2;
+
+		KK3.tau=tau;
+		KK3.nspread=nspread;
+		setup_lookup_exp3(KK3.tau);
+		KK3.lookup_exp=s_lookup_exp3;
+	}
+	else {
+		printf("Unknown kernel type: %d\n",opts.kernel_type);
+		return false;
+	}
+
+	int N1o=(int)(opts.N1*oversamp); int N2o=(int)(opts.N2*oversamp); int N3o=(int)(opts.N3*oversamp);
 
 	printf("Allocating...\n"); timer0.start();
 	double *out_oversamp=(double *)malloc(sizeof(double)*N1o*N2o*N3o*2);
@@ -143,9 +259,9 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 					BD.xmin=i1*opts.K1; BD.xmax=fmin((i1+1)*opts.K1-1,N1o-1);
 					BD.ymin=i2*opts.K2; BD.ymax=fmin((i2+1)*opts.K2-1,N2o-1);
 					BD.zmin=i3*opts.K3; BD.zmax=fmin((i3+1)*opts.K3-1,N3o-1);
-					BD.N1o=BD.xmax-BD.xmin+1+nspread;
-					BD.N2o=BD.ymax-BD.ymin+1+nspread;
-					BD.N3o=BD.zmax-BD.zmin+1+nspread;
+					BD.N1o=BD.xmax-BD.xmin+1+KK1.nspread;
+					BD.N2o=BD.ymax-BD.ymin+1+KK2.nspread;
+					BD.N3o=BD.zmax-BD.zmin+1+KK3.nspread;
 					BD.M=0;
 					block_data[bb]=BD;
 					bb++;
@@ -186,9 +302,9 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 		int i3=((int)(z[ii]))/opts.K3;
 		BlockData *BD=&(block_data[i1+num_blocks_x*i2+num_blocks_x*num_blocks_y*i3]);
 		int jj=BD->jj;
-		BD->x[jj]=x[ii]-BD->xmin+nspread/2;
-		BD->y[jj]=y[ii]-BD->ymin+nspread/2;
-		BD->z[jj]=z[ii]-BD->zmin+nspread/2;
+		BD->x[jj]=x[ii]-BD->xmin+KK1.nspread/2;
+		BD->y[jj]=y[ii]-BD->ymin+KK2.nspread/2;
+		BD->z[jj]=z[ii]-BD->zmin+KK3.nspread/2;
 		BD->nonuniform_d[jj*2]=d[ii*2];
 		BD->nonuniform_d[jj*2+1]=d[ii*2+1];
 		BD->jj++;
@@ -198,6 +314,7 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 	printf("Spreading...\n"); timer0.start();
 	#pragma omp parallel
 	{
+		QTime timerBB; timerBB.start(); int num_blocks_in_this_thread=0;
 		if (omp_get_thread_num()==0) printf("#################### Using %d threads (%d prescribed)\n",omp_get_num_threads(),opts.num_threads);
 		#pragma omp for
 		for (int bb=0; bb<num_blocks; bb++) {
@@ -205,11 +322,14 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 			BlockSpread3DOptions sopts;
 			sopts.N1o=BD->N1o; sopts.N2o=BD->N2o; sopts.N3o=BD->N3o;
 			sopts.M=BD->M;
-			sopts.nspread1=nspread; sopts.nspread2=nspread; sopts.nspread3=nspread;
-			sopts.tau1=tau; sopts.tau2=tau; sopts.tau3=tau;
-			blockspread3d(sopts,BD->uniform_d,BD->x,BD->y,BD->z,BD->nonuniform_d);
+			QTime timerAA; timerAA.start();
+			blockspread3d(sopts,KK1,KK2,KK3,BD->uniform_d,BD->x,BD->y,BD->z,BD->nonuniform_d);
+			num_blocks_in_this_thread++;
+			printf("TIME for single block:::: %d ms, time in this thread: %d ms, #blocks in thread: %d\n",timerAA.elapsed(),timerBB.elapsed(),num_blocks_in_this_thread);
 		}
+		if (omp_get_thread_num()==0) printf("#################### Used %d threads (%d prescribed)\n",omp_get_num_threads(),opts.num_threads);
 	}
+	double blockspread3d_time=timer0.elapsed();
 	printf("  For blockspread3d: %d ms\n",timer0.elapsed());
 
 	printf("Combining uniform data...\n"); timer0.start();
@@ -222,13 +342,13 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 		BlockData *BD=&(block_data[bb]);
 		int jjj=0;
 		for (int j3=0; j3<BD->N3o; j3++) {
-			int k3=(j3+BD->zmin-nspread/2+N3o)%N3o;
+			int k3=(j3+BD->zmin-KK3.nspread/2+N3o)%N3o;
 			int kkk3=k3*N1o*N2o;
 			for (int j2=0; j2<BD->N2o; j2++) {
-				int k2=(j2+BD->ymin-nspread/2+N2o)%N2o;
+				int k2=(j2+BD->ymin-KK2.nspread/2+N2o)%N2o;
 				int kkk2=kkk3+k2*N1o;
 				for (int j1=0; j1<BD->N1o; j1++) {
-					int k1=(j1+BD->xmin-nspread/2+N1o)%N1o;
+					int k1=(j1+BD->xmin-KK1.nspread/2+N1o)%N1o;
 					int kkk1=kkk2+k1;
 					out_oversamp[kkk1*2]+=BD->uniform_d[jjj*2];
 					out_oversamp[kkk1*2+1]+=BD->uniform_d[jjj*2+1];
@@ -270,7 +390,7 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
 
 	printf("fix...\n"); timer0.start();
-	do_fix_3d(opts.N1,opts.N2,opts.N3,opts.M,nspread,oversamp,tau,out,out_oversamp_hat);
+	do_fix_3d(opts.N1,opts.N2,opts.N3,opts.M,KK1,KK2,KK3,oversamp,out,out_oversamp_hat);
 	printf("  --- Elapsed: %d ms\n",timer0.elapsed());
 
 	printf("Restoring coordinates...\n"); timer0.start();
@@ -290,25 +410,23 @@ bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *
 	double other_time=total_time-spreading_time-fft_time;
 
 	printf("Elapsed time: %.3f seconds\n",total_time/1000);
-	printf("   %.3f spreading, %.3f fft, %.3f other\n",spreading_time/1000,fft_time/1000,other_time/1000);
-	printf("   %.1f%% spreading, %.1f%% fft, %.1f%% other\n",spreading_time/total_time*100,fft_time/total_time*100,other_time/total_time*100);
+	printf("   %.3f blockspread3d, %.3f other spreading, %.3f fft, %.3f other\n",blockspread3d_time/1000,(spreading_time-blockspread3d_time)/1000,fft_time/1000,other_time/1000);
+	printf("   %.1f%% blockspread3d, %.1f%% other spreading, %.1f%% fft, %.1f%% other\n",blockspread3d_time/total_time*100,(spreading_time-blockspread3d_time)/total_time*100,fft_time/total_time*100,other_time/total_time*100);
 
 	printf("done with blocknufft3d.\n");
-
-
-	exp_lookup_destroy();
 
 	return true;
 }
 
 // This is the mcwrap interface
-void blocknufft3d(int N1,int N2,int N3,int M,double *uniform_d,double *xyz,double *nonuniform_d,double eps,int K1,int K2,int K3,int num_threads) {
+void blocknufft3d(int N1,int N2,int N3,int M,double *uniform_d,double *xyz,double *nonuniform_d,double eps,int K1,int K2,int K3,int num_threads,int kernel_type) {
 	BlockNufft3DOptions opts;
 	opts.eps=eps;
 	opts.K1=K1; opts.K2=K2; opts.K3=K3;
 	opts.N1=N1; opts.N2=N2; opts.N3=N3;
 	opts.M=M;
 	opts.num_threads=num_threads;
+	opts.kernel_type=kernel_type;
 
 	double *x=&xyz[0];
 	double *y=&xyz[M];
@@ -356,43 +474,52 @@ bool do_fft_3d(int N1,int N2,int N3,double *out,double *in,int num_threads) {
 	return true;
 }
 
+void evaluate_kernel_1d(double *out,double diff,int imin,int imax,const KernelInfo &KK) {
 
-void evaluate_kernel_1d(double *out,double diff,int imin,int imax,double tau,double *lookup) {
+	if (KK.kernel_type==KERNEL_TYPE_GAUSSIAN) {
+		//exp(-(dx-i)^2*tau) = exp(-dx^2*tau)*exp(2*dx*tau)^i*exp(-i*i*tau)
+		double term1=exp(-diff*diff*KK.tau);
+		double factor2=exp(2*diff*KK.tau);
+		double factor2_inv=1/factor2;
 
-//	for (int ii=imin; ii<=imax; ii++) {
-//		out[ii-imin]=1;
-//	}
-//	return;
+		double term2=term1;
+		for (int i=0; i<=imax; i++) {
+			out[i-imin]=term2*KK.lookup_exp[i];
+			term2*=factor2;
+		}
 
-	//exp(-(dx-i)^2*tau) = exp(-dx^2*tau)*exp(2*dx*tau)^i*exp(-i*i*tau)
-	double term1=exp(-diff*diff*tau);
-	double factor2=exp(2*diff*tau);
-	double factor2_inv=1/factor2;
-
-	int jj=-imin;
-	double term2=term1;
-	for (int i=0; i<=imax; i++) {
-		out[i-imin]=term2*lookup[jj];
-		jj++;
-		term2*=factor2;
+		term2=term1*factor2_inv;
+		for (int i=-1; i>=imin; i--) {
+			out[i-imin]=term2*KK.lookup_exp[-i];
+			term2*=factor2_inv;
+		}
 	}
-
-	jj=-imin-1;
-	term2=term1*factor2_inv;
-	for (int i=-1; i>=imin; i--) {
-		out[i-imin]=term2*lookup[jj];
-		jj--;
-		term2*=factor2_inv;
+	else if (KK.kernel_type==KERNEL_TYPE_KB) {
+		for (int ii=imin; ii<=imax; ii++) {
+			//out[ii-imin]=1;
+			double x=diff-ii;
+			double tmp1=1-(2*x/KK.W)*(2*x/KK.W);
+			if (tmp1<0) {
+				out[ii-imin]=0;
+			}
+			else {
+				double y=KK.beta*sqrt(tmp1);
+				out[ii-imin]=besseli0_approx(y);
+			}
+		}
 	}
 }
 
-void do_fix_3d(int N1,int N2,int N3,int M,int nspread,int oversamp,double tau,double *out,double *out_oversamp_hat) {
-	double lambda=M_PI/tau;
-	int N1b=N1*oversamp;
-	int N2b=N2*oversamp;
-	int N3b=N3*oversamp;
+void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo &KK1,KernelInfo &KK2,KernelInfo &KK3,double oversamp,double *out,double *out_oversamp_hat) {
+	int N1b=(int)(N1*oversamp);
+	int N2b=(int)(N2*oversamp);
+	int N3b=(int)(N3*oversamp);
 
 #ifdef NUFFT_ANALYTIC_CORRECTION
+
+	double lambda=M_PI/KK.tau;
+	printf("t1 = %.16f\n",M_PI * lambda / (N1b*N1b));
+
 	double *correction_vals1=(double *)malloc(sizeof(double)*(N1/2+2));
 	double *correction_vals2=(double *)malloc(sizeof(double)*(N2/2+2));
 	double *correction_vals3=(double *)malloc(sizeof(double)*(N3/2+2));
@@ -462,53 +589,58 @@ void do_fix_3d(int N1,int N2,int N3,int M,int nspread,int oversamp,double tau,do
 	free(correction_vals3);
 #else
 
-	double x_kernel[nspread];
-	double y_kernel[nspread];
-	double z_kernel[nspread];
-	double lookup1[nspread+1]; for (int i=0; i<=nspread; i++) {double x=i-nspread/2; lookup1[i]=exp(-x*x*tau);}
-	double lookup2[nspread+1]; for (int i=0; i<=nspread; i++) {double x=i-nspread/2; lookup2[i]=exp(-x*x*tau);}
-	double lookup3[nspread+1]; for (int i=0; i<=nspread; i++) {double x=i-nspread/2; lookup3[i]=exp(-x*x*tau);}
-	evaluate_kernel_1d(x_kernel,0,-nspread/2,-nspread/2+nspread-1,tau,lookup1);
-	evaluate_kernel_1d(y_kernel,0,-nspread/2,-nspread/2+nspread-1,tau,lookup2);
-	evaluate_kernel_1d(z_kernel,0,-nspread/2,-nspread/2+nspread-1,tau,lookup3);
-
-
 	double *xcorrection=(double *)malloc(sizeof(double)*(N1b*2));
-	for (int ii=0; ii<N1b*2; ii++) xcorrection[ii]=0;
-	for (int dx=-nspread/2; dx<-nspread/2+nspread; dx++) {
-		double phase_increment=dx*2*M_PI/N1b;
-		double phase_factor=0;
-		double kernel_val=x_kernel[dx+nspread/2];
-		for (int xx=0; xx<N1b; xx++) {
-			xcorrection[xx*2]=kernel_val*cos(phase_factor);
-			xcorrection[xx*2+1]=kernel_val*sin(phase_factor);
-			phase_factor+=phase_increment;
-		}
-	}
-
 	double *ycorrection=(double *)malloc(sizeof(double)*(N2b*2));
-	for (int ii=0; ii<N2b*2; ii++) ycorrection[ii]=0;
-	for (int dy=-nspread/2; dy<-nspread/2+nspread; dy++) {
-		double phase_increment=dy*2*M_PI/N2b;
-		double phase_factor=0;
-		double kernel_val=y_kernel[dy+nspread/2];
-		for (int yy=0; yy<N2b; yy++) {
-			ycorrection[yy*2]=kernel_val*cos(phase_factor);
-			ycorrection[yy*2+1]=kernel_val*sin(phase_factor);
-			phase_factor+=phase_increment;
-		}
-	}
-
 	double *zcorrection=(double *)malloc(sizeof(double)*(N3b*2));
-	for (int ii=0; ii<N3b*2; ii++) zcorrection[ii]=0;
-	for (int dz=-nspread/2; dz<-nspread/2+nspread; dz++) {
-		double phase_increment=dz*2*M_PI/N3b;
-		double phase_factor=0;
-		double kernel_val=z_kernel[dz+nspread/2];
-		for (int zz=0; zz<N3b; zz++) {
-			zcorrection[zz*2]=kernel_val*cos(phase_factor);
-			zcorrection[zz*2+1]=kernel_val*sin(phase_factor);
-			phase_factor+=phase_increment;
+
+	int correction_kernel_oversamp=2; //do not change this -- hard-coded below
+
+	for (int ik=1; ik<=3; ik++) {
+		KernelInfo *KK;
+		double *correction;
+		int Nb;
+		if (ik==1) {KK=&KK1; Nb=N1b; correction=xcorrection;}
+		if (ik==2) {KK=&KK2; Nb=N2b; correction=ycorrection;}
+		if (ik==3) {KK=&KK3; Nb=N3b; correction=zcorrection;}
+		int nspread_correction=KK->nspread*2;
+
+		double kernel_A[nspread_correction]; double kernel_B[nspread_correction];
+		evaluate_kernel_1d(kernel_A,0,-nspread_correction/2,-nspread_correction/2+nspread_correction-1,*KK);
+		evaluate_kernel_1d(kernel_B,-0.5,-nspread_correction/2,-nspread_correction/2+nspread_correction-1,*KK);
+		for (int ii=0; ii<Nb*2; ii++) correction[ii]=0;
+		for (int dx=-nspread_correction/2; dx<-nspread_correction/2+nspread_correction; dx++) {
+			{
+				double phase_increment=dx*2*M_PI/Nb;
+				double kernel_val=kernel_A[dx+nspread_correction/2]/correction_kernel_oversamp;
+				double phase_factor=0;
+				for (int xx=0; xx<=Nb/2; xx++) {
+					correction[xx*2]+=kernel_val*cos(phase_factor);
+					correction[xx*2+1]+=kernel_val*sin(phase_factor);
+					phase_factor+=phase_increment;
+				}
+				phase_factor=-phase_increment;
+				for (int xx=Nb-1; xx>Nb/2; xx--) {
+					correction[xx*2]+=kernel_val*cos(phase_factor);
+					correction[xx*2+1]+=kernel_val*sin(phase_factor);
+					phase_factor-=phase_increment;
+				}
+			}
+			{
+				double phase_increment=(dx+0.5)*2*M_PI/Nb;
+				double kernel_val=kernel_B[dx+nspread_correction/2]/correction_kernel_oversamp;
+				double phase_factor=0;
+				for (int xx=0; xx<=Nb/2; xx++) {
+					correction[xx*2]+=kernel_val*cos(phase_factor);
+					correction[xx*2+1]+=kernel_val*sin(phase_factor);
+					phase_factor+=phase_increment;
+				}
+				phase_factor=-phase_increment;
+				for (int xx=Nb-1; xx>Nb/2; xx--) {
+					correction[xx*2]+=kernel_val*cos(phase_factor);
+					correction[xx*2+1]+=kernel_val*sin(phase_factor);
+					phase_factor-=phase_increment;
+				}
+			}
 		}
 	}
 
@@ -521,8 +653,8 @@ void do_fix_3d(int N1,int N2,int N3,int M,int nspread,int oversamp,double tau,do
 		else {
 			bb3=(N3*oversamp-(N3-i3));
 		}
-		double correction3_re=1/(lambda*sqrt(lambda))*zcorrection[bb3*2];
-		double correction3_im=1/(lambda*sqrt(lambda))*zcorrection[bb3*2+1];
+		double correction3_re=zcorrection[bb3*2];
+		double correction3_im=zcorrection[bb3*2+1];
 		aa3=aa3*N1*N2;
 		bb3=bb3*N1*oversamp*N2*oversamp;
 		for (int i2=0; i2<N2; i2++) {
@@ -554,8 +686,10 @@ void do_fix_3d(int N1,int N2,int N3,int M,int nspread,int oversamp,double tau,do
 				double correction1_inv_im=-correction1_im/correction1_magsqr;
 				aa1=aa1+aa2;
 				bb1=bb1+bb2;
-				out[aa1*2]=out_oversamp_hat[bb1*2]*correction1_inv_re - out_oversamp_hat[bb1*2+1]*correction1_inv_im;
-				out[aa1*2+1]=out_oversamp_hat[bb1*2]*correction1_inv_im + out_oversamp_hat[bb1*2+1]*correction1_inv_re;
+				out[aa1*2]=( out_oversamp_hat[bb1*2]*correction1_inv_re - out_oversamp_hat[bb1*2+1]*correction1_inv_im ) / M;
+				out[aa1*2+1]=( out_oversamp_hat[bb1*2]*correction1_inv_im + out_oversamp_hat[bb1*2+1]*correction1_inv_re ) / M;
+				//out[aa1*2]=out_oversamp_hat[bb1*2]; //for testing without correction
+				//out[aa1*2+1]=out_oversamp_hat[bb1*2+1]; //for testing without correction
 			}
 		}
 	}
@@ -565,11 +699,6 @@ void do_fix_3d(int N1,int N2,int N3,int M,int nspread,int oversamp,double tau,do
 	free(zcorrection);
 
 #endif
-
-
-
-
-
 }
 
 bool check_valid_inputs(BlockSpread3DData &D) {
@@ -594,15 +723,10 @@ bool check_valid_inputs(BlockSpread3DData &D) {
 
 
 
-void do_spreading(BlockSpread3DData &D) {
-
-	double x_kernel[D.nspread1+1];
-	double y_kernel[D.nspread2+1];
-	double z_kernel[D.nspread3+1];
-
-	double lookup1[D.nspread1+1]; for (int i=0; i<=D.nspread1; i++) {double x=i-D.nspread1/2; lookup1[i]=exp(-x*x*D.tau1);}
-	double lookup2[D.nspread2+1]; for (int i=0; i<=D.nspread2; i++) {double x=i-D.nspread2/2; lookup2[i]=exp(-x*x*D.tau2);}
-	double lookup3[D.nspread3+1]; for (int i=0; i<=D.nspread3; i++) {double x=i-D.nspread3/2; lookup3[i]=exp(-x*x*D.tau3);}
+void do_spreading(BlockSpread3DData &D,const KernelInfo &KK1,const KernelInfo &KK2,const KernelInfo &KK3) {
+	double x_kernel[KK1.nspread+1];
+	double y_kernel[KK2.nspread+1];
+	double z_kernel[KK3.nspread+1];
 
 	double N1o_times_2=D.N1o*2;
 	double N1oN2o_times_2=D.N1o*D.N2o*2;
@@ -618,95 +742,43 @@ void do_spreading(BlockSpread3DData &D) {
 		int z_integer=ROUND_2_INT(z0);
 		double z_diff=z0-z_integer;
 
-		evaluate_kernel_1d(x_kernel,x_diff,-D.nspread1/2,-D.nspread1/2+D.nspread1,D.tau1,lookup1);
-		evaluate_kernel_1d(y_kernel,y_diff,-D.nspread2/2,-D.nspread2/2+D.nspread2,D.tau2,lookup2);
-		evaluate_kernel_1d(z_kernel,z_diff,-D.nspread3/2,-D.nspread3/2+D.nspread3,D.tau3,lookup3);
-
+		evaluate_kernel_1d(x_kernel,x_diff,-KK1.nspread/2,-KK1.nspread/2+KK1.nspread,KK1);
+		evaluate_kernel_1d(y_kernel,y_diff,-KK2.nspread/2,-KK2.nspread/2+KK2.nspread,KK2);
+		evaluate_kernel_1d(z_kernel,z_diff,-KK3.nspread/2,-KK3.nspread/2+KK3.nspread,KK3);
 
 		int xmin,xmax;
 		if (x_diff<0) {
-			xmin=fmax(x_integer-D.nspread1/2,0);
-			xmax=fmin(x_integer+D.nspread1/2-1,D.N1o-1);
+			xmin=fmax(x_integer-KK1.nspread/2,0);
+			xmax=fmin(x_integer+KK1.nspread/2-1,D.N1o-1);
 		}
 		else {
-			xmin=fmax(x_integer-D.nspread1/2+1,0);
-			xmax=fmin(x_integer+D.nspread1/2,D.N1o-1);
+			xmin=fmax(x_integer-KK1.nspread/2+1,0);
+			xmax=fmin(x_integer+KK1.nspread/2,D.N1o-1);
 		}
-		int iix=xmin-(x_integer-D.nspread1/2);
+		int iix=xmin-(x_integer-KK1.nspread/2);
 
 
 		int ymin,ymax;
 		if (y_diff<0) {
-			ymin=fmax(y_integer-D.nspread2/2,0);
-			ymax=fmin(y_integer+D.nspread2/2-1,D.N2o-1);
+			ymin=fmax(y_integer-KK2.nspread/2,0);
+			ymax=fmin(y_integer+KK2.nspread/2-1,D.N2o-1);
 		}
 		else {
-			ymin=fmax(y_integer-D.nspread2/2+1,0);
-			ymax=fmin(y_integer+D.nspread2/2,D.N2o-1);
+			ymin=fmax(y_integer-KK2.nspread/2+1,0);
+			ymax=fmin(y_integer+KK2.nspread/2,D.N2o-1);
 		}
-		int iiy=ymin-(y_integer-D.nspread2/2);
+		int iiy=ymin-(y_integer-KK2.nspread/2);
 
 		int zmin,zmax;
 		if (z_diff<0) {
-			zmin=fmax(z_integer-D.nspread3/2,0);
-			zmax=fmin(z_integer+D.nspread3/2-1,D.N3o-1);
+			zmin=fmax(z_integer-KK3.nspread/2,0);
+			zmax=fmin(z_integer+KK3.nspread/2-1,D.N3o-1);
 		}
 		else {
-			zmin=fmax(z_integer-D.nspread3/2+1,0);
-			zmax=fmin(z_integer+D.nspread3/2,D.N3o-1);
+			zmin=fmax(z_integer-KK3.nspread/2+1,0);
+			zmax=fmin(z_integer+KK3.nspread/2,D.N3o-1);
 		}
-		int iiz=zmin-(z_integer-D.nspread3/2);
-
-		/*
-		double kernval0=x_term1*y_term1*z_term1;
-		int uuu=0;
-		for (int iz=zmin; iz<=zmax; iz++) {
-			int kkk1=N1oN2o_times_2*iz; //complex index
-			int iiz=iz-z_integer;
-			double kernval1=kernval0;
-			if (iiz>=0) kernval1*=z_term2[iiz];
-			else kernval1*=z_term2_neg[-iiz];
-			for (int iy=ymin; iy<=ymax; iy++) {
-				int kkk2=kkk1+N1o_times_2*iy;
-				int iiy=iy-y_integer;
-				double kernval2=kernval1;
-				if (iiy>=0) kernval2*=y_term2[iiy];
-				else kernval2*=y_term2_neg[-iiy];
-				int kkk3=kkk2+xmin*2;
-				{
-					//did the precompute for for efficiency -- note, we don't need to check for negative
-					double d0_re_times_kernval2=d0_re*kernval2;
-					double d0_im_times_kernval2=d0_im*kernval2;
-					for (int iii=0; iii<precomp_x_term2_sz; iii++) {
-						//most of the time is spent within this code block!!!
-						D.uniform_d[kkk3]+=d0_re_times_kernval2*precomp_x_term2[iii];
-						D.uniform_d[kkk3+1]+=d0_im_times_kernval2*precomp_x_term2[iii];
-						kkk3+=2; //plus two because complex
-					}
-				}
-			}
-		}
-		*/
-
-		/*
-		for (int iz=zmin; iz<=zmax; iz++) {
-			double kernval_00=z_kernel[iz-zmin+iiz];
-			int kkk1=N1oN2o_times_2*iz; //complex index
-			for (int iy=ymin; iy<=ymax; iy++) {
-				double kernval_01=kernval_00*y_kernel[iy-ymin+iiy];
-				int kkk2=kkk1+N1o_times_2*iy; //remember it is complex
-				int kkk3=kkk2+xmin*2; //remember it is complex
-				double kernval_01_times_d0_re=kernval_01*d0_re;
-				double kernval_01_times_d0_im=kernval_01*d0_im;
-				for (int ix=xmin; ix<=xmax; ix++) {
-					D.uniform_d[kkk3]+=x_kernel[ix-xmin+iix]*kernval_01_times_d0_re;
-					D.uniform_d[kkk3+1]+=x_kernel[ix-xmin+iix]*kernval_01_times_d0_im;
-					kkk3+=2; //remember it is complex
-
-				}
-			}
-		}
-		*/
+		int iiz=zmin-(z_integer-KK3.nspread/2);
 
 		int xmax_minus_xmin_plus_iix=xmax-xmin+iix;
 		int xmin_times_2=xmin*2;
@@ -729,32 +801,5 @@ void do_spreading(BlockSpread3DData &D) {
 			}
 		}
 	}
-}
-
-void free_data(BlockSpread3DData &D) {
-}
-
-void exp_lookup_init(double tau1,double tau2,double tau3) {
-	if (s_exp_lookup1) free(s_exp_lookup1);
-	if (s_exp_lookup2) free(s_exp_lookup2);
-	if (s_exp_lookup3) free(s_exp_lookup3);
-	int NN=100;
-	s_exp_lookup1=(double *)malloc(sizeof(double)*NN);
-	s_exp_lookup2=(double *)malloc(sizeof(double)*NN);
-	s_exp_lookup3=(double *)malloc(sizeof(double)*NN);
-	for (int k0=0; k0<NN; k0++) {
-		//s_exp_lookup1[k0]=exp(-k0*k0/(4*tau1));
-		//s_exp_lookup2[k0]=exp(-k0*k0/(4*tau2));
-		//s_exp_lookup3[k0]=exp(-k0*k0/(4*tau3));
-		s_exp_lookup1[k0]=exp(-k0*k0*tau1);
-		s_exp_lookup2[k0]=exp(-k0*k0*tau2);
-		s_exp_lookup3[k0]=exp(-k0*k0*tau3);
-	}
-}
-
-void exp_lookup_destroy() {
-	free(s_exp_lookup1); s_exp_lookup1=0;
-	free(s_exp_lookup2); s_exp_lookup2=0;
-	free(s_exp_lookup3); s_exp_lookup3=0;
 }
 

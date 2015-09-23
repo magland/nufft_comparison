@@ -23,7 +23,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
       //mexPrintf("test A\n");
 //   Check the number of inputs/outputs
       if (nlhs==0) nlhs=1;
-      if (nrhs!=10)
+      if (nrhs!=11)
          mexErrMsgTxt("Incorrect number of inputs"); 
       else if (nlhs>1)
          mexErrMsgTxt ("Too many outputs.");
@@ -103,6 +103,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         //num_threads
         double *p_input_num_threads=mxGetPr(prhs[10-1]);
         int input_num_threads=(int)p_input_num_threads[0];
+        //kernel_type
+        double *p_input_kernel_type=mxGetPr(prhs[11-1]);
+        int input_kernel_type=(int)p_input_kernel_type[0];
     
       //mexPrintf("test C\n");
 //    Setup the outputs
@@ -145,7 +148,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         input_K1,
         input_K2,
         input_K3,
-        input_num_threads
+        input_num_threads,
+        input_kernel_type
 
         );
    
