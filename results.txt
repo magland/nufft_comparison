@@ -31,8 +31,8 @@ Avg. differences:
    blocknufft-b           0.000          25.162               0        With blocking
   blocknufft-mb           0.000           7.037               0        With blocking and multiple threads (10)
   nufft Fessler         910.304          19.552             180        spreadR = 7
-           nfft          66.367         195.759             4.0        nfft with multi-threading off -- used m=3 as below
-         nfft-m         115.749          33.455             3.3        nfft with multi-threading on
+           nfft          12.435          24.442             4.0        nfft with multi-threading off -- used m=3 as below
+         nfft-m               ?               ?             3.3        nfft with multi-threading on
 
 
 Command for nfft:
@@ -77,6 +77,6 @@ Avg. differences:
      blocknufft           0.000          22.001               0
    blocknufft-b           0.000          21.079               0
   blocknufft-mb           0.000           8.762               0
-           nfft          68.440         171.005             3.9
-           
+           nfft               ?               ?             3.9
+
 

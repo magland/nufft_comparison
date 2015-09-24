@@ -10,6 +10,7 @@
 #include "block3dspreader.h"
 
 //#define NUFFT_ANALYTIC_CORRECTION
+//#define USE_COMPLEX_CORRECTION
 
 //Redundant?
 struct BlockSpread3DOptions {
@@ -26,11 +27,9 @@ struct BlockSpread3DData {
 	double *uniform_d; // uniform data
 };
 
-
-
 // A couple implementation routines for nufft
 bool do_fft_3d(int N1,int N2,int N3,double *out,double *in,int num_threads=1);
-void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo &KK1,KernelInfo &KK2,KernelInfo &KK3,double oversamp,double *out,double *out_oversamp_hat);
+void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo KK1,KernelInfo KK2,KernelInfo KK3,double *out,double *out_oversamp_hat);
 
 // These are the implementation routines for spreading
 void define_block_ids_and_location_codes(BlockSpread3DData &D);
@@ -39,339 +38,418 @@ void compute_sizes_and_block_indices(BlockSpread3DData &D);
 void set_working_nonuniform_data(BlockSpread3DData &D);
 void set_uniform_data(BlockSpread3DData &D);
 
-//set a lookup table for fast Gaussian spreading
+//set a lookup table for fast Gaussian spreading (which, btw, is not as good as KB)
 #define MAX_LOOKUP_EXP 200
 double s_lookup_exp1[MAX_LOOKUP_EXP];
 double s_lookup_exp2[MAX_LOOKUP_EXP];
 double s_lookup_exp3[MAX_LOOKUP_EXP];
 void setup_lookup_exp1(double tau) {
-	for (int i=0; i<MAX_LOOKUP_EXP; i++) {
-		s_lookup_exp1[i]=exp(-i*i*tau);
-	}
+    for (int i=0; i<MAX_LOOKUP_EXP; i++) {
+        s_lookup_exp1[i]=exp(-i*i*tau);
+    }
 }
 void setup_lookup_exp2(double tau) {
-	for (int i=0; i<MAX_LOOKUP_EXP; i++) {
-		s_lookup_exp2[i]=exp(-i*i*tau);
-	}
+    for (int i=0; i<MAX_LOOKUP_EXP; i++) {
+        s_lookup_exp2[i]=exp(-i*i*tau);
+    }
 }
 void setup_lookup_exp3(double tau) {
-	for (int i=0; i<MAX_LOOKUP_EXP; i++) {
-		s_lookup_exp3[i]=exp(-i*i*tau);
-	}
+    for (int i=0; i<MAX_LOOKUP_EXP; i++) {
+        s_lookup_exp3[i]=exp(-i*i*tau);
+    }
 }
 
-// Here's the nufft!
-bool blocknufft3d(const BlockNufft3DOptions &opts,double *out,double *x,double *y,double *z,double *d) {
-	QTime timer0;
-	QTime timer_total; timer_total.start();
 
-    printf ("\nStarting blocknufft3d.\n");
+//
+Block3DSpreader *blocknufft3d_prepare(const BlockNufft3DOptions &opts,double *x,double *y,double *z) {
+    QTime blocknufft3d_prepare_timer; blocknufft3d_prepare_timer.start();
+    QTime timer0; timer0.start();
 
-	omp_set_num_threads(opts.num_threads);
+    printf ("\nStarting precompute_blocknufft3d.\n");
 
-	double oversamp;
+    //check the inputs
+    for (int i=0; i<opts.M; i++) {
+        if ((x[i]<-M_PI)||(x[i]>=M_PI)||(y[i]<-M_PI)||(y[i]>=M_PI)||(z[i]<-M_PI)||(z[i]>=M_PI)) {
+            printf("PROBLEM preparing spreader: input locations are out of range (should be >=-pi and <pi\n");
+            return 0;
+        }
+    }
 
-	//set up the spreading kernels
-	KernelInfo KK1,KK2,KK3;
+    KernelInfo KK1,KK2,KK3;
 
-	if (opts.kernel_type==KERNEL_TYPE_KB) {
-		KK1.kernel_type=KERNEL_TYPE_KB;
-		KK2.kernel_type=KERNEL_TYPE_KB;
-		KK3.kernel_type=KERNEL_TYPE_KB;
+    if (opts.kernel_type==KERNEL_TYPE_KB) {
+        KK1.kernel_type=KERNEL_TYPE_KB;
+        KK2.kernel_type=KERNEL_TYPE_KB;
+        KK3.kernel_type=KERNEL_TYPE_KB;
 
-		oversamp=2;
-		//int nspread=10; double fac1=0.90,fac2=1.47;
-		int nspread=12; double fac1=1,fac2=1;
-		if (opts.eps>=1e-2) {
-			nspread=4; fac1=0.75; fac2=1.71;
-		}
-		else if (opts.eps>=1e-4) {
-			nspread=6; fac1=0.83; fac2=1.56;
-		}
-		else if (opts.eps>=1e-6) {
-			nspread=8; fac1=0.89; fac2=1.45;
-		}
-		else if (opts.eps>=1e-8) {
-			nspread=10; fac1=0.90; fac2=1.47;
-		}
-		else if (opts.eps>=1e-10) {
-			nspread=12; fac1=0.92; fac2=1.51;
-		}
-		else if (opts.eps>=1e-12) {
-			nspread=14; fac1=0.94; fac2=1.48;
-		}
-		else {
-			nspread=16; fac1=0.94; fac2=1.46;
-		}
+        KK1.oversamp=2;
+        KK2.oversamp=2;
+        KK3.oversamp=2;
+        //int nspread=10; double fac1=0.90,fac2=1.47;
+        int nspread=12; double fac1=1,fac2=1;
+        if (opts.eps>=1e-2) {
+            nspread=4; fac1=0.75; fac2=1.71;
+        }
+        else if (opts.eps>=1e-4) {
+            nspread=6; fac1=0.83; fac2=1.56;
+        }
+        else if (opts.eps>=1e-6) {
+            nspread=8; fac1=0.89; fac2=1.45;
+        }
+        else if (opts.eps>=1e-8) {
+            nspread=10; fac1=0.90; fac2=1.47;
+        }
+        else if (opts.eps>=1e-10) {
+            nspread=12; fac1=0.92; fac2=1.51;
+        }
+        else if (opts.eps>=1e-12) {
+            nspread=14; fac1=0.94; fac2=1.48;
+        }
+        else {
+            nspread=16; fac1=0.94; fac2=1.46;
+        }
 
-		{
-			KK1.nspread=nspread;
-			KK1.W=KK1.nspread*fac1;
-			double tmp0=KK1.W*KK1.W/4-0.8;
-			if (tmp0<0) tmp0=0; //fix this?
-			KK1.beta=M_PI*sqrt(tmp0)*fac2;
-		}
+        {
+            KK1.nspread=nspread;
+            KK1.W=KK1.nspread*fac1;
+            double tmp0=KK1.W*KK1.W/4-0.8;
+            if (tmp0<0) tmp0=0; //fix this?
+            KK1.beta=M_PI*sqrt(tmp0)*fac2;
+        }
 
-		{
-			KK2.nspread=nspread;
-			KK2.W=KK2.nspread*fac1;
-			double tmp0=KK2.W*KK2.W/4-0.8;
-			if (tmp0<0) tmp0=0; //fix this?
-			KK2.beta=M_PI*sqrt(tmp0)*fac2;
-		}
+        {
+            KK2.nspread=nspread;
+            KK2.W=KK2.nspread*fac1;
+            double tmp0=KK2.W*KK2.W/4-0.8;
+            if (tmp0<0) tmp0=0; //fix this?
+            KK2.beta=M_PI*sqrt(tmp0)*fac2;
+        }
 
-		{
-			KK3.nspread=nspread;
-			KK3.W=KK3.nspread*fac1;
-			double tmp0=KK3.W*KK3.W/4-0.8;
-			if (tmp0<0) tmp0=0; //fix this?
-			KK3.beta=M_PI*sqrt(tmp0)*fac2;
-		}
-	}
-	else if (opts.kernel_type==KERNEL_TYPE_GAUSSIAN) {
-		double eps=opts.eps * 10; //note: jfm multiplied by 100 here!
-		oversamp=2; if (eps<= 1e-11) oversamp=3;
-		int nspread=(int)(-log(eps)/(M_PI*(oversamp-1)/(oversamp-.5)) + .5) + 1; //the plus one was added -- different from docs -- aha!
-		nspread=nspread*2; //we need to multiply by 2, because I consider nspread as the diameter
-		double lambda=oversamp*oversamp * nspread/2 / (oversamp*(oversamp-.5));
-		double tau=M_PI/lambda;
+        {
+            KK3.nspread=nspread;
+            KK3.W=KK3.nspread*fac1;
+            double tmp0=KK3.W*KK3.W/4-0.8;
+            if (tmp0<0) tmp0=0; //fix this?
+            KK3.beta=M_PI*sqrt(tmp0)*fac2;
+        }
+    }
+    else if (opts.kernel_type==KERNEL_TYPE_GAUSSIAN) {
+        double eps=opts.eps * 10; //note: jfm multiplied by 100 here!
+        double oversamp=2; if (eps<= 1e-11) oversamp=3;
+
+        KK1.oversamp=oversamp;
+        KK2.oversamp=oversamp;
+        KK3.oversamp=oversamp;
+
+        int nspread=(int)(-log(eps)/(M_PI*(oversamp-1)/(oversamp-.5)) + .5) + 1; //the plus one was added -- different from docs -- aha!
+        nspread=nspread*2; //we need to multiply by 2, because I consider nspread as the diameter
+        double lambda=oversamp*oversamp * nspread/2 / (oversamp*(oversamp-.5));
+        double tau=M_PI/lambda;
         printf ("Using oversamp=%g, nspread=%d, tau=%g\n",oversamp,nspread,tau);
 
-		KK1.kernel_type=KERNEL_TYPE_GAUSSIAN;
-		KK2.kernel_type=KERNEL_TYPE_GAUSSIAN;
-		KK3.kernel_type=KERNEL_TYPE_GAUSSIAN;
+        KK1.kernel_type=KERNEL_TYPE_GAUSSIAN;
+        KK2.kernel_type=KERNEL_TYPE_GAUSSIAN;
+        KK3.kernel_type=KERNEL_TYPE_GAUSSIAN;
 
 
-		KK1.tau=tau;
-		KK1.nspread=nspread;
-		setup_lookup_exp1(KK1.tau);
-		KK1.lookup_exp=s_lookup_exp1;
+        KK1.tau=tau;
+        KK1.nspread=nspread;
+        setup_lookup_exp1(KK1.tau);
+        KK1.lookup_exp=s_lookup_exp1;
 
-		KK2.tau=tau;
-		KK2.nspread=nspread;
-		setup_lookup_exp2(KK2.tau);
-		KK2.lookup_exp=s_lookup_exp2;
+        KK2.tau=tau;
+        KK2.nspread=nspread;
+        setup_lookup_exp2(KK2.tau);
+        KK2.lookup_exp=s_lookup_exp2;
 
-		KK3.tau=tau;
-		KK3.nspread=nspread;
-		setup_lookup_exp3(KK3.tau);
-		KK3.lookup_exp=s_lookup_exp3;
-	}
-	else {
+        KK3.tau=tau;
+        KK3.nspread=nspread;
+        setup_lookup_exp3(KK3.tau);
+        KK3.lookup_exp=s_lookup_exp3;
+    }
+    else {
         printf ("Unknown kernel type: %d\n",opts.kernel_type);
-		return false;
-	}
+        return 0;
+    }
 
-	int N1o=(int)(opts.N1*oversamp); int N2o=(int)(opts.N2*oversamp); int N3o=(int)(opts.N3*oversamp);
+    Block3DSpreader *SS=new Block3DSpreader;
+    SS->setKernelInfo(KK1,KK2,KK3);
 
-    printf ("Allocating...\n"); timer0.start();
-	double *out_oversamp=(double *)malloc(sizeof(double)*N1o*N2o*N3o*2);
-	double *out_oversamp_hat=(double *)malloc(sizeof(double)*N1o*N2o*N3o*2);
-    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
+    omp_set_num_threads(opts.num_threads);
 
-    printf ("Scaling coordinates...\n"); timer0.start();
-	double factor_x=N1o/(2*M_PI);
-	double factor_y=N2o/(2*M_PI);
-	double factor_z=N3o/(2*M_PI);
-	for (int ii=0; ii<opts.M; ii++) {
-		x[ii]*=factor_x;
-		y[ii]*=factor_y;
-		z[ii]*=factor_z;
-	}
-    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
+    int N1o=(int)(opts.N1*KK1.oversamp); int N2o=(int)(opts.N2*KK2.oversamp); int N3o=(int)(opts.N3*KK3.oversamp);
 
-	//create blocks
-    printf ("Creating blocks...\n"); timer0.start();
-	int num_blocks_x=ceil(N1o*1.0/opts.K1);
-	int num_blocks_y=ceil(N2o*1.0/opts.K2);
-	int num_blocks_z=ceil(N3o*1.0/opts.K3);
-	int num_blocks=num_blocks_x*num_blocks_y*num_blocks_z;
-	BlockData block_data[num_blocks];
-	{
-		int bb=0;
-		for (int i3=0; i3<num_blocks_z; i3++) {
-			for (int i2=0; i2<num_blocks_y; i2++) {
-				for (int i1=0; i1<num_blocks_x; i1++) {
-					BlockData BD;
-                    BD.KK1=&KK1;
-                    BD.KK2=&KK2;
-                    BD.KK3=&KK3;
-					BD.xmin=i1*opts.K1; BD.xmax=fmin((i1+1)*opts.K1-1,N1o-1);
-					BD.ymin=i2*opts.K2; BD.ymax=fmin((i2+1)*opts.K2-1,N2o-1);
-					BD.zmin=i3*opts.K3; BD.zmax=fmin((i3+1)*opts.K3-1,N3o-1);
-					BD.N1o=BD.xmax-BD.xmin+1+KK1.nspread;
-					BD.N2o=BD.ymax-BD.ymin+1+KK2.nspread;
-					BD.N3o=BD.zmax-BD.zmin+1+KK3.nspread;
-					BD.M=0;
-					block_data[bb]=BD;
-					bb++;
-				}
-			}
-		}
-	}
-    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
+    //The input locations are between -pi and pi.... we change them to be between 0 and N1o/N2o/N3o
+    //We put these back before exiting!
+    double factor_x=N1o/(2*M_PI);
+    double factor_y=N2o/(2*M_PI);
+    double factor_z=N3o/(2*M_PI);
+    for (int ii=0; ii<opts.M; ii++) {
+        x[ii]=(x[ii]+M_PI)*factor_x;
+        y[ii]=(y[ii]+M_PI)*factor_y;
+        z[ii]=(z[ii]+M_PI)*factor_z;
+    }
 
-	//compute block counts
-    printf ("Computing block counts...\n"); timer0.start();
-	for (int ii=0; ii<opts.M; ii++) {
-		int i1=((int)(x[ii]))/opts.K1;
-		int i2=((int)(y[ii]))/opts.K2;
-		int i3=((int)(z[ii]))/opts.K3;
+    int initialization_time=timer0.elapsed();
+    printf ("  Initialization: %d ms\n",(int)initialization_time);
+
+    timer0.start();
+    //create blocks
+    int num_blocks_x=ceil(N1o*1.0/opts.K1);
+    int num_blocks_y=ceil(N2o*1.0/opts.K2);
+    int num_blocks_z=ceil(N3o*1.0/opts.K3);
+    {
+        int bb=0;
+        for (int i3=0; i3<num_blocks_z; i3++) {
+            for (int i2=0; i2<num_blocks_y; i2++) {
+                for (int i1=0; i1<num_blocks_x; i1++) {
+                    BlockData *BD=new BlockData;
+                    BD->x_block_index=i1;
+                    BD->y_block_index=i2;
+                    BD->z_block_index=i3;
+                    BD->xmin=i1*opts.K1; BD->xmax=fmin((i1+1)*opts.K1-1,N1o-1);
+                    BD->ymin=i2*opts.K2; BD->ymax=fmin((i2+1)*opts.K2-1,N2o-1);
+                    BD->zmin=i3*opts.K3; BD->zmax=fmin((i3+1)*opts.K3-1,N3o-1);
+                    BD->N1o=BD->xmax-BD->xmin+1+KK1.nspread;
+                    BD->N2o=BD->ymax-BD->ymin+1+KK2.nspread;
+                    BD->N3o=BD->zmax-BD->zmin+1+KK3.nspread;
+                    BD->M=0;
+                    SS->addBlock(BD);
+                    bb++;
+                }
+            }
+        }
+    }
+
+    //compute block counts
+    for (int ii=0; ii<opts.M; ii++) {
+        int i1=((int)(x[ii]))/opts.K1;
+        int i2=((int)(y[ii]))/opts.K2;
+        int i3=((int)(z[ii]))/opts.K3;
         if ((i1>=num_blocks_x)||(i2>=num_blocks_y)||(i3>=num_blocks_z)) {
             printf ("Unexpected problem computing block counts!!!\n");
         }
         else {
-            block_data[i1+num_blocks_x*i2+num_blocks_x*num_blocks_y*i3].M++;
+            SS->block(i1+num_blocks_x*i2+num_blocks_x*num_blocks_y*i3)->M++;
         }
-	}
-    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
+    }
 
-	//allocate block data
+    //allocate block data
     printf ("Allocating block data...\n"); timer0.start();
-	for (int bb=0; bb<num_blocks; bb++) {
-		BlockData *BD=&(block_data[bb]);
-		BD->x=(double *)malloc(sizeof(double)*BD->M);
-		BD->y=(double *)malloc(sizeof(double)*BD->M);
-		BD->z=(double *)malloc(sizeof(double)*BD->M);
-		BD->nonuniform_d=(double *)malloc(sizeof(double)*BD->M*2);
-		BD->uniform_d=(double *)malloc(sizeof(double)*BD->N1o*BD->N2o*BD->N3o*2);
-		BD->jj=0;
-	}
-    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
+    for (int bb=0; bb<SS->blockCount(); bb++) {
+        BlockData *BD=SS->block(bb);
+        BD->x=(double *)malloc(sizeof(double)*BD->M);
+        BD->y=(double *)malloc(sizeof(double)*BD->M);
+        BD->z=(double *)malloc(sizeof(double)*BD->M);
+        BD->nonuniform_d=(double *)malloc(sizeof(double)*BD->M*2);
+        BD->uniform_d=(double *)malloc(sizeof(double)*BD->N1o*BD->N2o*BD->N3o*2);
+        BD->nonuniform_indices=(int *)malloc(sizeof(int)*BD->M);
+        BD->jj=0;
+    }
 
-	//set block input data
-    printf ("Setting block input data...\n"); timer0.start();
-	for (int ii=0; ii<opts.M; ii++) {
-		int i1=((int)(x[ii]))/opts.K1;
-		int i2=((int)(y[ii]))/opts.K2;
-		int i3=((int)(z[ii]))/opts.K3;
+    //set block input data
+    for (int ii=0; ii<opts.M; ii++) {
+        int i1=((int)(x[ii]))/opts.K1;
+        int i2=((int)(y[ii]))/opts.K2;
+        int i3=((int)(z[ii]))/opts.K3;
         if ((i1>=num_blocks_x)||(i2>=num_blocks_y)||(i3>=num_blocks_z)) {
             printf ("Unexpected problem setting block input data!!!\n");
         }
         else {
-            BlockData *BD=&(block_data[i1+num_blocks_x*i2+num_blocks_x*num_blocks_y*i3]);
+            BlockData *BD=SS->block(i1+num_blocks_x*i2+num_blocks_x*num_blocks_y*i3);
             int jj=BD->jj;
-            BD->x[jj]=x[ii]-BD->xmin+KK1.nspread/2;
-            BD->y[jj]=y[ii]-BD->ymin+KK2.nspread/2;
-            BD->z[jj]=z[ii]-BD->zmin+KK3.nspread/2;
-            BD->nonuniform_d[jj*2]=d[ii*2];
-            BD->nonuniform_d[jj*2+1]=d[ii*2+1];
+            //BD->x[jj]=x[ii]-BD->xmin+KK1.nspread/2;
+            //BD->y[jj]=y[ii]-BD->ymin+KK2.nspread/2;
+            //BD->z[jj]=z[ii]-BD->zmin+KK3.nspread/2;
+            //BD->nonuniform_d[jj*2]=d[ii*2];
+            //BD->nonuniform_d[jj*2+1]=d[ii*2+1];
+            BD->nonuniform_indices[jj]=ii;
             BD->jj++;
         }
-	}
-    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
+    }
+    for (int bb=0; bb<SS->blockCount(); bb++) {
+        BlockData *BD=SS->block(bb);
+        for (int mm=0; mm<BD->M; mm++) {
+            int ii=BD->nonuniform_indices[mm];
+            BD->x[mm]=x[ii]-BD->xmin+KK1.nspread/2;
+            BD->y[mm]=y[ii]-BD->ymin+KK2.nspread/2;
+            BD->z[mm]=z[ii]-BD->zmin+KK3.nspread/2;
+        }
+    }
 
-    printf ("Spreading...\n"); timer0.start();
-	Block3DSpreader SS;
-	for (int bb=0; bb<num_blocks; bb++) {
-		BlockData *BD=&(block_data[bb]);
-		SS.addBlock(BD);
-	}
-	if (opts.num_threads>1) SS.setParallel(PARALLEL_OPENMP,opts.num_threads);
-	else SS.setParallel(PARALLEL_NONE,1);
-	SS.run();
-	/*
-	#pragma omp parallel
-	{
-		QTime timerBB; timerBB.start(); int num_blocks_in_this_thread=0;
-        if (omp_get_thread_num()==0) printf ("#################### Using %d threads (%d prescribed)\n",omp_get_num_threads(),opts.num_threads);
-		#pragma omp for
-		for (int bb=0; bb<num_blocks; bb++) {
-			BlockData *BD=&(block_data[bb]);
-			BlockSpread3DOptions sopts;
-			sopts.N1o=BD->N1o; sopts.N2o=BD->N2o; sopts.N3o=BD->N3o;
-			sopts.M=BD->M;
-			QTime timerAA; timerAA.start();
-			blockspread3d(sopts,KK1,KK2,KK3,BD->uniform_d,BD->x,BD->y,BD->z,BD->nonuniform_d);
-			num_blocks_in_this_thread++;
-            printf ("TIME for single block:::: %d ms, time in this thread: %d ms, #blocks in thread: %d\n",timerAA.elapsed(),timerBB.elapsed(),num_blocks_in_this_thread);
-		}
-        if (omp_get_thread_num()==0) printf ("#################### Used %d threads (%d prescribed)\n",omp_get_num_threads(),opts.num_threads);
-	}
-	*/
-	double blockspread3d_time=timer0.elapsed();
-    printf ("  For blockspread3d: %d ms\n",timer0.elapsed());
+    double prepare_blocks_time=timer0.elapsed();
+    printf ("  Prepare blocks: %d ms\n",(int)prepare_blocks_time);
 
-    printf ("Combining uniform data...\n"); timer0.start();
+    timer0.start();
+    if (opts.num_threads>1) SS->setParallel(PARALLEL_OPENMP,opts.num_threads);
+    else SS->setParallel(PARALLEL_NONE,1);
+    SS->precompute();
+    double precompute_time=timer0.elapsed();
+    printf ("  Precompute: %d ms\n",(int)precompute_time);
+
+    for (int ii=0; ii<opts.M; ii++) {
+        x[ii]=x[ii]/factor_x-M_PI;
+        y[ii]=y[ii]/factor_y-M_PI;
+        z[ii]=z[ii]/factor_z-M_PI;
+    }
+
+    printf("Elapsed time for blocknufft3d_prepare: %d ms\n",blocknufft3d_prepare_timer.elapsed());
+
+    return SS;
+}
+
+// Here's the nufft!
+bool blocknufft3d_run(Block3DSpreader *SS,const BlockNufft3DOptions &opts,double *out,double *d) {
+
+    if (!SS) {
+        printf("Problem running nufft... SS is null.\n");
+        return false;
+    }
+
+
+    QTime blocknufft3d_timer; blocknufft3d_timer.start();
+
+    omp_set_num_threads(opts.num_threads);
+
+
+    QTime timer0;
+
+    ////////////////////////////////////////////////////////////////////
+    timer0.start();
+    int N1o=(int)(opts.N1*SS->KK1().oversamp); int N2o=(int)(opts.N2*SS->KK2().oversamp); int N3o=(int)(opts.N3*SS->KK3().oversamp);
+
+    double *out_oversamp=(double *)malloc(sizeof(double)*N1o*N2o*N3o*2);
+    double *out_oversamp_hat=(double *)malloc(sizeof(double)*N1o*N2o*N3o*2);
+
+    for (int bb=0; bb<SS->blockCount(); bb++) {
+        BlockData *BD=SS->block(bb);
+        for (int mm=0; mm<BD->M; mm++) {
+            int ii=BD->nonuniform_indices[mm];
+            BD->nonuniform_d[mm*2]=d[ii*2];
+            BD->nonuniform_d[mm*2+1]=d[ii*2+1];
+        }
+    }
+    double setup_time=timer0.elapsed();
+    printf ("  Setting up data: %d ms\n",(int)setup_time);
+
+    ////////////////////////////////////////////////////////////////////
+    timer0.start();
+    SS->run();
+    double spreading_time=timer0.elapsed();
+    printf ("  Spreading: %d ms\n",(int)spreading_time);
+
+    ////////////////////////////////////////////////////////////////////
+    timer0.start();
 	int N1oN2oN3o=N1o*N2o*N3o;
 	for (int ii=0; ii<N1oN2oN3o; ii++) {
 		out_oversamp[ii*2]=0;
 		out_oversamp[ii*2+1]=0;
 	}
-	for (int bb=0; bb<num_blocks; bb++) {
-		BlockData *BD=&(block_data[bb]);
-		int jjj=0;
-		for (int j3=0; j3<BD->N3o; j3++) {
-			int k3=(j3+BD->zmin-KK3.nspread/2+N3o)%N3o;
-			int kkk3=k3*N1o*N2o;
-			for (int j2=0; j2<BD->N2o; j2++) {
-				int k2=(j2+BD->ymin-KK2.nspread/2+N2o)%N2o;
-				int kkk2=kkk3+k2*N1o;
-				for (int j1=0; j1<BD->N1o; j1++) {
-					int k1=(j1+BD->xmin-KK1.nspread/2+N1o)%N1o;
-					int kkk1=kkk2+k1;
-					out_oversamp[kkk1*2]+=BD->uniform_d[jjj*2];
-					out_oversamp[kkk1*2+1]+=BD->uniform_d[jjj*2+1];
-					jjj++;
-				}
-			}
-		}
-	}
-    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
 
-	//free block data
-    printf ("Freeing block data...\n"); timer0.start();
-	for (int bb=0; bb<num_blocks; bb++) {
-		BlockData *BD=&(block_data[bb]);
-		free(BD->x);
-		free(BD->y);
-		free(BD->z);
-		free(BD->nonuniform_d);
-		free(BD->uniform_d);
-	}
-    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
+    int nspread1=SS->KK1().nspread; int nspread2=SS->KK2().nspread; int nspread3=SS->KK3().nspread;
 
-	double spreading_time=timer_total.elapsed();
-    printf ("  --- Total time for spreading: %d ms\n",(int)spreading_time);
+    /*
+     * Now we need to combine the output data from the blocks.
+     * And we'd like to parallelize this step. However, due to overlaps, we cannot just let every
+     * block have at it simultaneously. So we need to use a checkerboard pattern and do 8 passes!
+     *
+     */
+    QTime combining_timer; combining_timer.start(); int combining_operation_count=0;
+    int num_internal=0;
+    for (int bb_z_parity=0; bb_z_parity<2; bb_z_parity++)
+    for (int bb_y_parity=0; bb_y_parity<2; bb_y_parity++)
+    for (int bb_x_parity=0; bb_x_parity<2; bb_x_parity++) {
+        #pragma omp parallel
+        {
+            int local_operation_count=0;
+            #pragma omp for
+            for (int bb=0; bb<SS->blockCount(); bb++) {
+                BlockData *BD=SS->block(bb);
+                if (((BD->x_block_index%2)==bb_x_parity)&&((BD->y_block_index%2)==bb_y_parity)&&((BD->z_block_index%2)==bb_z_parity)) {
+                    if ((0<=BD->xmin-nspread1/2)&&(BD->xmax+nspread1/2<N1o)&&(0<=BD->ymin-nspread2/2)&&(BD->ymax+nspread2/2<N2o)&&(0<=BD->zmin-nspread3/2)&&(BD->zmax+nspread3/2<N3o)) {
+                        //in this case we don't need to worry about modulos (wrapping)
+                        int jjj=0;
+                        int min1=BD->xmin-nspread1/2; int max1=min1+BD->N1o;
+                        int min2=BD->ymin-nspread2/2; int max2=min2+BD->N2o;
+                        int min3=BD->zmin-nspread3/2; int max3=min3+BD->N3o;
+                        for (int j3=min3; j3<max3; j3++) {
+                            int kkk3=j3*N1o*N2o;
+                            for (int j2=min2; j2<max2; j2++) {
+                                int kkk2=kkk3+j2*N1o;
+                                for (int j1=min1+kkk2; j1<max1+kkk2; j1++) { //we absorb the +kkk2 into the loop, not sure if it helps
+                                    out_oversamp[j1*2]+=BD->uniform_d[jjj*2];
+                                    out_oversamp[j1*2+1]+=BD->uniform_d[jjj*2+1];
+                                    jjj++;
+                                }
+                                local_operation_count+=BD->N1o*2;
+                            }
+                        }
+                        num_internal++;
+                    }
+                    else {
+                        //in this case we need to worry about modulos (wrapping)
+                        int jjj=0;
+                        int min1=BD->xmin-nspread1/2; int max1=min1+BD->N1o;
+                        int min2=BD->ymin-nspread2/2; int max2=min2+BD->N2o;
+                        int min3=BD->zmin-nspread3/2; int max3=min3+BD->N3o;
+                        for (int j3=min3; j3<max3; j3++) {
+                            int kkk3=((j3+N3o)%N3o)*N1o*N2o;
+                            for (int j2=min2; j2<max2; j2++) {
+                                int kkk2=kkk3+((j2+N2o)%N2o)*N1o;
+                                for (int j1=min1; j1<max1; j1++) {
+                                    int k1=((j1+N1o)%N1o)+kkk2;
+                                    out_oversamp[k1*2]+=BD->uniform_d[jjj*2];
+                                    out_oversamp[k1*2+1]+=BD->uniform_d[jjj*2+1];
+                                    jjj++;
+                                }
+                                local_operation_count+=BD->N1o*2;
+                            }
+                        }
+                    }
+                }
+            }
+            combining_operation_count+=local_operation_count;
+        }
+    }
+    printf("For combining, we have %g operations per second., %d/%d internal.\n",combining_operation_count*1.0/(combining_timer.elapsed())*1000,num_internal,SS->blockCount());
 
-    printf ("fft...\n"); timer0.start();
+
+    double combining_time=timer0.elapsed();
+    printf ("  Combining: %d ms\n",(int)combining_time);
+
+    ////////////////////////////////////////////////////////////////////
+    timer0.start();
+    //fft
 	if (!do_fft_3d(N1o,N2o,N3o,out_oversamp_hat,out_oversamp,opts.num_threads)) {
         printf ("problem in do_fft_3d\n");
-		for (int ii=0; ii<opts.M; ii++) {
-			x[ii]/=factor_x;
-			y[ii]/=factor_y;
-			z[ii]/=factor_z;
-		}
 		free(out_oversamp);
 		free(out_oversamp_hat);
 		return false;
 	}
 	double fft_time=timer0.elapsed();
-    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
+    printf ("  FFT: %d ms\n",(int)fft_time);
 
-    printf ("fix...\n"); timer0.start();
-	do_fix_3d(opts.N1,opts.N2,opts.N3,opts.M,KK1,KK2,KK3,oversamp,out,out_oversamp_hat);
-    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
+    ////////////////////////////////////////////////////////////////////
+    timer0.start();
+    //correction
+    do_fix_3d(opts.N1,opts.N2,opts.N3,opts.M,SS->KK1(),SS->KK2(),SS->KK3(),out,out_oversamp_hat);
+    double correction_time=timer0.elapsed();
+    printf ("  Correction: %d ms\n",(int)correction_time);
 
-    printf ("Restoring coordinates...\n"); timer0.start();
-	for (int ii=0; ii<opts.M; ii++) {
-		x[ii]/=factor_x;
-		y[ii]/=factor_y;
-		z[ii]/=factor_z;
-	}
-    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
+    ////////////////////////////////////////////////////////////////////
+    //finalize
+    timer0.start();
 
-    printf ("free...\n"); timer0.start();
 	free(out_oversamp_hat);
 	free(out_oversamp);
-    printf ("  --- Elapsed: %d ms\n",timer0.elapsed());
+    double finalize_time=timer0.elapsed();
+    printf ("  Finalize: %d ms\n",(int)finalize_time);
 
-	double total_time=timer_total.elapsed();
-	double other_time=total_time-spreading_time-fft_time;
+    double total_time=blocknufft3d_timer.elapsed();
 
     printf ("Elapsed time: %.3f seconds\n",total_time/1000);
-    printf ("   %.3f blockspread3d, %.3f other spreading, %.3f fft, %.3f other\n",blockspread3d_time/1000,(spreading_time-blockspread3d_time)/1000,fft_time/1000,other_time/1000);
-    printf ("   %.1f%% blockspread3d, %.1f%% other spreading, %.1f%% fft, %.1f%% other\n",blockspread3d_time/total_time*100,(spreading_time-blockspread3d_time)/total_time*100,fft_time/total_time*100,other_time/total_time*100);
+    printf ("   %.3f spreading, %.3f fft, %.3f other\n",spreading_time/1000,fft_time/1000,(total_time-spreading_time-fft_time)/1000);
+    printf ("   %.1f%% spreading, %.1f%% fft, %.1f%% other\n",spreading_time/total_time*100,fft_time/total_time*100,(total_time-spreading_time-fft_time)/total_time*100);
 
     printf ("done with blocknufft3d.\n");
 
@@ -391,7 +469,9 @@ void blocknufft3d(int N1,int N2,int N3,int M,double *uniform_d,double *xyz,doubl
 	double *x=&xyz[0];
 	double *y=&xyz[M];
 	double *z=&xyz[2*M];
-	blocknufft3d(opts,uniform_d,x,y,z,nonuniform_d);
+    Block3DSpreader *SS=blocknufft3d_prepare(opts,x,y,z);
+    blocknufft3d_run(SS,opts,uniform_d,nonuniform_d);
+    delete SS;
 }
 
 /////////////////////////////////////////////
@@ -434,11 +514,204 @@ bool do_fft_3d(int N1,int N2,int N3,double *out,double *in,int num_threads) {
 	return true;
 }
 
+void do_fix_3d_OLD(int N1,int N2,int N3,int M,KernelInfo KK1,KernelInfo KK2,KernelInfo KK3,double *out,double *out_oversamp_hat) {
 
-void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo &KK1,KernelInfo &KK2,KernelInfo &KK3,double oversamp,double *out,double *out_oversamp_hat) {
-	int N1b=(int)(N1*oversamp);
-	int N2b=(int)(N2*oversamp);
-	int N3b=(int)(N3*oversamp);
+    double oversamp=KK1.oversamp;
+
+    int N1b=(int)(N1*oversamp);
+    int N2b=(int)(N2*oversamp);
+    int N3b=(int)(N3*oversamp);
+
+#ifdef NUFFT_ANALYTIC_CORRECTION
+
+    double lambda=M_PI/KK.tau;
+
+    double *correction_vals1=(double *)malloc(sizeof(double)*(N1/2+2));
+    double *correction_vals2=(double *)malloc(sizeof(double)*(N2/2+2));
+    double *correction_vals3=(double *)malloc(sizeof(double)*(N3/2+2));
+
+    double t1=M_PI * lambda / (N1b*N1b);
+    double t2=M_PI * lambda / (N2b*N2b);
+    double t3=M_PI * lambda / (N3b*N3b);
+    for (int i=0; i<N1/2+2; i++) {
+        correction_vals1[i]=exp(-i*i*t1)*(lambda*sqrt(lambda))*M;
+    }
+    for (int i=0; i<N2/2+2; i++) {
+        correction_vals2[i]=exp(-i*i*t2);
+    }
+    for (int i=0; i<N3/2+2; i++) {
+        correction_vals3[i]=exp(-i*i*t3);
+    }
+
+    for (int i3=0; i3<N3; i3++) {
+        int aa3=((i3+N3/2)%N3)*N1*N2; //this includes a shift of the zero frequency
+        int bb3=0;
+        double correction3=1/(lambda*sqrt(lambda));
+        if (i3<(N3+1)/2) { //had to be careful here!
+            bb3=i3*N1*oversamp*N2*oversamp;
+            correction3=correction_vals3[i3];
+        }
+        else {
+            bb3=(N3*oversamp-(N3-i3))*N1*oversamp*N2*oversamp;
+            correction3=correction_vals3[N3-i3];
+        }
+        for (int i2=0; i2<N2; i2++) {
+            int aa2=((i2+N2/2)%N2)*N1;
+            int bb2=0;
+            double correction2=1;
+            if (i2<(N2+1)/2) {
+                bb2=i2*N1*oversamp;
+                correction2=correction_vals2[i2];
+            }
+            else {
+                bb2=(N2*oversamp-(N2-i2))*N1*oversamp;
+                correction2=correction_vals2[N2-i2];
+            }
+            aa2+=aa3;
+            bb2+=bb3;
+            correction2*=correction3;
+            for (int i1=0; i1<N1; i1++) {
+                int aa1=(i1+N1/2)%N1;
+                int bb1=0;
+                double correction1=1;
+                if (i1<(N1+1)/2) {
+                    bb1=i1;
+                    correction1=correction_vals1[i1];
+                }
+                else {
+                    bb1=N1*oversamp-(N1-i1);
+                    correction1=correction_vals1[N1-i1];
+                }
+                aa1+=aa2;
+                bb1+=bb2;
+                correction1*=correction2;
+                out[aa1*2]=out_oversamp_hat[bb1*2]/correction1;
+                out[aa1*2+1]=out_oversamp_hat[bb1*2+1]/correction1;
+            }
+        }
+    }
+    free(correction_vals1);
+    free(correction_vals2);
+    free(correction_vals3);
+#else
+
+    double *xcorrection=(double *)malloc(sizeof(double)*(N1b*2));
+    double *ycorrection=(double *)malloc(sizeof(double)*(N2b*2));
+    double *zcorrection=(double *)malloc(sizeof(double)*(N3b*2));
+
+    int correction_kernel_oversamp=2; //do not change this -- hard-coded below
+
+    for (int ik=1; ik<=3; ik++) {
+        KernelInfo *KK;
+        double *correction;
+        int Nb;
+        if (ik==1) {KK=&KK1; Nb=N1b; correction=xcorrection;}
+        if (ik==2) {KK=&KK2; Nb=N2b; correction=ycorrection;}
+        if (ik==3) {KK=&KK3; Nb=N3b; correction=zcorrection;}
+        int nspread_correction=KK->nspread*2;
+
+        double kernel_A[nspread_correction]; double kernel_B[nspread_correction];
+        evaluate_kernel_1d(kernel_A,0,-nspread_correction/2,-nspread_correction/2+nspread_correction-1,*KK);
+        evaluate_kernel_1d(kernel_B,-0.5,-nspread_correction/2,-nspread_correction/2+nspread_correction-1,*KK);
+        for (int ii=0; ii<Nb*2; ii++) correction[ii]=0;
+        for (int dx=-nspread_correction/2; dx<-nspread_correction/2+nspread_correction; dx++) {
+            {
+                double phase_increment=dx*2*M_PI/Nb;
+                double kernel_val=kernel_A[dx+nspread_correction/2]/correction_kernel_oversamp;
+                double phase_factor=0;
+                for (int xx=0; xx<=Nb/2; xx++) {
+                    correction[xx*2]+=kernel_val*cos(phase_factor);
+                    correction[xx*2+1]+=kernel_val*sin(phase_factor);
+                    phase_factor+=phase_increment;
+                }
+                phase_factor=-phase_increment;
+                for (int xx=Nb-1; xx>Nb/2; xx--) {
+                    correction[xx*2]+=kernel_val*cos(phase_factor);
+                    correction[xx*2+1]+=kernel_val*sin(phase_factor);
+                    phase_factor-=phase_increment;
+                }
+            }
+            {
+                double phase_increment=(dx+0.5)*2*M_PI/Nb;
+                double kernel_val=kernel_B[dx+nspread_correction/2]/correction_kernel_oversamp;
+                double phase_factor=0;
+                for (int xx=0; xx<=Nb/2; xx++) {
+                    correction[xx*2]+=kernel_val*cos(phase_factor);
+                    correction[xx*2+1]+=kernel_val*sin(phase_factor);
+                    phase_factor+=phase_increment;
+                }
+                phase_factor=-phase_increment;
+                for (int xx=Nb-1; xx>Nb/2; xx--) {
+                    correction[xx*2]+=kernel_val*cos(phase_factor);
+                    correction[xx*2+1]+=kernel_val*sin(phase_factor);
+                    phase_factor-=phase_increment;
+                }
+            }
+        }
+    }
+
+    for (int i3=0; i3<N3; i3++) {
+        int aa3=((i3+N3/2)%N3); //this includes a shift of the zero frequency
+        int bb3=0;
+        if (i3<(N3+1)/2) { //had to be careful here!
+            bb3=i3;
+        }
+        else {
+            bb3=(N3*oversamp-(N3-i3));
+        }
+        double correction3_re=zcorrection[bb3*2];
+        double correction3_im=zcorrection[bb3*2+1];
+        aa3=aa3*N1*N2;
+        bb3=bb3*N1*oversamp*N2*oversamp;
+        for (int i2=0; i2<N2; i2++) {
+            int aa2=((i2+N2/2)%N2);
+            int bb2=0;
+            if (i2<(N2+1)/2) {
+                bb2=i2;
+            }
+            else {
+                bb2=(N2*oversamp-(N2-i2));
+            }
+            double correction2_re=correction3_re*ycorrection[bb2*2] - correction3_im*ycorrection[bb2*2+1];
+            double correction2_im=correction3_re*ycorrection[bb2*2+1] + correction3_im*ycorrection[bb2*2];
+            aa2=aa2*N1+aa3;
+            bb2=bb2*N1*oversamp+bb3;
+            for (int i1=0; i1<N1; i1++) {
+                int aa1=(i1+N1/2)%N1;
+                int bb1=0;
+                if (i1<(N1+1)/2) {
+                    bb1=i1;
+                }
+                else {
+                    bb1=N1*oversamp-(N1-i1);
+                }
+                double correction1_re=correction2_re*xcorrection[bb1*2] - correction2_im*xcorrection[bb1*2+1];
+                double correction1_im=correction2_re*xcorrection[bb1*2+1] + correction2_im*xcorrection[bb1*2];
+                double correction1_magsqr=correction1_re*correction1_re+correction1_im*correction1_im;
+                double correction1_inv_re=correction1_re/correction1_magsqr;
+                double correction1_inv_im=-correction1_im/correction1_magsqr;
+                aa1=aa1+aa2;
+                bb1=bb1+bb2;
+                out[aa1*2]=( out_oversamp_hat[bb1*2]*correction1_inv_re - out_oversamp_hat[bb1*2+1]*correction1_inv_im ) / M;
+                out[aa1*2+1]=( out_oversamp_hat[bb1*2]*correction1_inv_im + out_oversamp_hat[bb1*2+1]*correction1_inv_re ) / M;
+                //out[aa1*2]=out_oversamp_hat[bb1*2]; //for testing without correction
+                //out[aa1*2+1]=out_oversamp_hat[bb1*2+1]; //for testing without correction
+            }
+        }
+    }
+
+    free(xcorrection);
+    free(ycorrection);
+    free(zcorrection);
+
+#endif
+}
+
+
+void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo KK1,KernelInfo KK2,KernelInfo KK3,double *out,double *out_oversamp_hat) {
+    int N1b=(int)(N1*KK1.oversamp);
+    int N2b=(int)(N2*KK2.oversamp);
+    int N3b=(int)(N3*KK3.oversamp);
 
 #ifdef NUFFT_ANALYTIC_CORRECTION
 
@@ -466,11 +739,11 @@ void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo &KK1,KernelInfo &KK2,Kernel
 		int bb3=0;
 		double correction3=1/(lambda*sqrt(lambda));
 		if (i3<(N3+1)/2) { //had to be careful here!
-			bb3=i3*N1*oversamp*N2*oversamp;
+            bb3=i3*N1*KK1.oversamp*N2*KK2.oversamp;
 			correction3=correction_vals3[i3];
 		}
 		else {
-			bb3=(N3*oversamp-(N3-i3))*N1*oversamp*N2*oversamp;
+            bb3=(N3*KK3.oversamp-(N3-i3))*N1*KK1.oversamp*N2*KK2.oversamp;
 			correction3=correction_vals3[N3-i3];
 		}
 		for (int i2=0; i2<N2; i2++) {
@@ -478,11 +751,11 @@ void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo &KK1,KernelInfo &KK2,Kernel
 			int bb2=0;
 			double correction2=1;
 			if (i2<(N2+1)/2) {
-				bb2=i2*N1*oversamp;
+                bb2=i2*N1*KK1.oversamp;
 				correction2=correction_vals2[i2];
 			}
 			else {
-				bb2=(N2*oversamp-(N2-i2))*N1*oversamp;
+                bb2=(N2*KK2.oversamp-(N2-i2))*N1*KK1.oversamp;
 				correction2=correction_vals2[N2-i2];
 			}
 			aa2+=aa3;
@@ -497,7 +770,7 @@ void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo &KK1,KernelInfo &KK2,Kernel
 					correction1=correction_vals1[i1];
 				}
 				else {
-					bb1=N1*oversamp-(N1-i1);
+                    bb1=N1*KK1.oversamp-(N1-i1);
 					correction1=correction_vals1[N1-i1];
 				}
 				aa1+=aa2;
@@ -513,9 +786,15 @@ void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo &KK1,KernelInfo &KK2,Kernel
 	free(correction_vals3);
 #else
 
+    #ifdef USE_COMPLEX_CORRECTION
 	double *xcorrection=(double *)malloc(sizeof(double)*(N1b*2));
 	double *ycorrection=(double *)malloc(sizeof(double)*(N2b*2));
 	double *zcorrection=(double *)malloc(sizeof(double)*(N3b*2));
+    #else
+    double *xcorrection=(double *)malloc(sizeof(double)*(N1b));
+    double *ycorrection=(double *)malloc(sizeof(double)*(N2b));
+    double *zcorrection=(double *)malloc(sizeof(double)*(N3b));
+    #endif
 
 	int correction_kernel_oversamp=2; //do not change this -- hard-coded below
 
@@ -531,22 +810,34 @@ void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo &KK1,KernelInfo &KK2,Kernel
 		double kernel_A[nspread_correction]; double kernel_B[nspread_correction];
 		evaluate_kernel_1d(kernel_A,0,-nspread_correction/2,-nspread_correction/2+nspread_correction-1,*KK);
 		evaluate_kernel_1d(kernel_B,-0.5,-nspread_correction/2,-nspread_correction/2+nspread_correction-1,*KK);
-		for (int ii=0; ii<Nb*2; ii++) correction[ii]=0;
+        #ifdef USE_COMPLEX_CORRECTION
+        for (int ii=0; ii<Nb*2; ii++) correction[ii]=0;
+        #else
+        for (int ii=0; ii<Nb; ii++) correction[ii]=0;
+        #endif
 		for (int dx=-nspread_correction/2; dx<-nspread_correction/2+nspread_correction; dx++) {
 			{
 				double phase_increment=dx*2*M_PI/Nb;
 				double kernel_val=kernel_A[dx+nspread_correction/2]/correction_kernel_oversamp;
 				double phase_factor=0;
 				for (int xx=0; xx<=Nb/2; xx++) {
+                    #ifdef USE_COMPLEX_CORRECTION
 					correction[xx*2]+=kernel_val*cos(phase_factor);
 					correction[xx*2+1]+=kernel_val*sin(phase_factor);
-					phase_factor+=phase_increment;
+                    #else
+                    correction[xx]+=kernel_val*cos(phase_factor);
+                    #endif
+                    phase_factor+=phase_increment;
 				}
 				phase_factor=-phase_increment;
 				for (int xx=Nb-1; xx>Nb/2; xx--) {
+                    #ifdef USE_COMPLEX_CORRECTION
 					correction[xx*2]+=kernel_val*cos(phase_factor);
 					correction[xx*2+1]+=kernel_val*sin(phase_factor);
-					phase_factor-=phase_increment;
+                    #else
+                    correction[xx]+=kernel_val*cos(phase_factor);
+                    #endif
+                    phase_factor-=phase_increment;
 				}
 			}
 			{
@@ -554,19 +845,38 @@ void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo &KK1,KernelInfo &KK2,Kernel
 				double kernel_val=kernel_B[dx+nspread_correction/2]/correction_kernel_oversamp;
 				double phase_factor=0;
 				for (int xx=0; xx<=Nb/2; xx++) {
+                    #ifdef USE_COMPLEX_CORRECTION
 					correction[xx*2]+=kernel_val*cos(phase_factor);
 					correction[xx*2+1]+=kernel_val*sin(phase_factor);
-					phase_factor+=phase_increment;
+                    #else
+                    correction[xx]+=kernel_val*cos(phase_factor);
+                    #endif
+                    phase_factor+=phase_increment;
 				}
 				phase_factor=-phase_increment;
 				for (int xx=Nb-1; xx>Nb/2; xx--) {
+                    #ifdef USE_COMPLEX_CORRECTION
 					correction[xx*2]+=kernel_val*cos(phase_factor);
 					correction[xx*2+1]+=kernel_val*sin(phase_factor);
+                    #else
+                    correction[xx]+=kernel_val*cos(phase_factor);
+                    #endif
 					phase_factor-=phase_increment;
 				}
 			}
-		}
-	}
+        }
+        for (int ii=0; ii<Nb; ii++) {
+            #ifdef USE_COMPLEX_CORRECTION
+            double magsqr=correction[2*ii]*correction[2*ii]+correction[2*ii+1]*correction[2*ii+1];
+            double inv_re=correction[2*ii]/magsqr;
+            double inv_im=-correction[2*ii+1]/magsqr;
+            correction[2*ii]=inv_re;
+            correction[2*ii+1]=inv_im;
+            #else
+            correction[ii]=1/correction[ii];
+            #endif
+        }
+    }
 
 	for (int i3=0; i3<N3; i3++) {
 		int aa3=((i3+N3/2)%N3); //this includes a shift of the zero frequency
@@ -575,12 +885,16 @@ void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo &KK1,KernelInfo &KK2,Kernel
 			bb3=i3;
 		}
 		else {
-			bb3=(N3*oversamp-(N3-i3));
+            bb3=(N3*KK3.oversamp-(N3-i3));
 		}
+        #ifdef USE_COMPLEX_CORRECTION
 		double correction3_re=zcorrection[bb3*2];
 		double correction3_im=zcorrection[bb3*2+1];
+        #else
+        double correction3=zcorrection[bb3];
+        #endif
 		aa3=aa3*N1*N2;
-		bb3=bb3*N1*oversamp*N2*oversamp;
+        bb3=bb3*N1*KK1.oversamp*N2*KK2.oversamp;
 		for (int i2=0; i2<N2; i2++) {
 			int aa2=((i2+N2/2)%N2);
 			int bb2=0;
@@ -588,12 +902,16 @@ void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo &KK1,KernelInfo &KK2,Kernel
 				bb2=i2;
 			}
 			else {
-				bb2=(N2*oversamp-(N2-i2));
+                bb2=(N2*KK2.oversamp-(N2-i2));
 			}
+            #ifdef USE_COMPLEX_CORRECTION
 			double correction2_re=correction3_re*ycorrection[bb2*2] - correction3_im*ycorrection[bb2*2+1];
 			double correction2_im=correction3_re*ycorrection[bb2*2+1] + correction3_im*ycorrection[bb2*2];
+            #else
+            double correction2=correction3*ycorrection[bb2];
+            #endif
 			aa2=aa2*N1+aa3;
-			bb2=bb2*N1*oversamp+bb3;
+            bb2=bb2*N1*KK1.oversamp+bb3;
 			for (int i1=0; i1<N1; i1++) {
 				int aa1=(i1+N1/2)%N1;
 				int bb1=0;
@@ -601,19 +919,24 @@ void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo &KK1,KernelInfo &KK2,Kernel
 					bb1=i1;
 				}
 				else {
-					bb1=N1*oversamp-(N1-i1);
+                    bb1=N1*KK1.oversamp-(N1-i1);
 				}
+                #ifdef USE_COMPLEX_CORRECTION
 				double correction1_re=correction2_re*xcorrection[bb1*2] - correction2_im*xcorrection[bb1*2+1];
 				double correction1_im=correction2_re*xcorrection[bb1*2+1] + correction2_im*xcorrection[bb1*2];
-				double correction1_magsqr=correction1_re*correction1_re+correction1_im*correction1_im;
-				double correction1_inv_re=correction1_re/correction1_magsqr;
-				double correction1_inv_im=-correction1_im/correction1_magsqr;
+                #else
+                double correction1=correction2*xcorrection[bb1];
+                #endif
+
 				aa1=aa1+aa2;
 				bb1=bb1+bb2;
-				out[aa1*2]=( out_oversamp_hat[bb1*2]*correction1_inv_re - out_oversamp_hat[bb1*2+1]*correction1_inv_im ) / M;
-				out[aa1*2+1]=( out_oversamp_hat[bb1*2]*correction1_inv_im + out_oversamp_hat[bb1*2+1]*correction1_inv_re ) / M;
-				//out[aa1*2]=out_oversamp_hat[bb1*2]; //for testing without correction
-				//out[aa1*2+1]=out_oversamp_hat[bb1*2+1]; //for testing without correction
+                #ifdef USE_COMPLEX_CORRECTION
+                out[aa1*2]=( out_oversamp_hat[bb1*2]*correction1_re - out_oversamp_hat[bb1*2+1]*correction1_im ) / M;
+                out[aa1*2+1]=( out_oversamp_hat[bb1*2]*correction1_im + out_oversamp_hat[bb1*2+1]*correction1_re ) / M;
+                #else
+                out[aa1*2]=out_oversamp_hat[bb1*2]*correction1/M;
+                out[aa1*2+1]=out_oversamp_hat[bb1*2+1]*correction1/M;
+                #endif
 			}
 		}
 	}

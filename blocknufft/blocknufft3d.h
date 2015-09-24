@@ -1,6 +1,8 @@
 #ifndef BLOCKNUFFT3D_H
 #define BLOCKNUFFT3D_H
 
+#include "block3dspreader.h"
+
 #define KERNEL_TYPE_GAUSSIAN		1
 #define KERNEL_TYPE_KB				2
 struct BlockNufft3DOptions {
@@ -13,7 +15,8 @@ struct BlockNufft3DOptions {
 };
 
 //x,y,z should be in range [0,2pi)
-bool blocknufft3d(const BlockNufft3DOptions &opts,double *uniform_d,double *x,double *y,double *z,double *nonuniform_d);
+Block3DSpreader *blocknufft3d_prepare(const BlockNufft3DOptions &opts,double *x,double *y,double *z);
+bool blocknufft3d_run(Block3DSpreader *SS,const BlockNufft3DOptions &opts,double *uniform_d,double *nonuniform_d);
 void test_blocknufft3d(BlockNufft3DOptions &opts);
 
 /* MATLAB interface using MCWRAP

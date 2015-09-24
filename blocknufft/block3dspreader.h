@@ -5,6 +5,7 @@
 struct KernelInfo {
 	int kernel_type;
 
+    double oversamp;
 	int nspread;
 
 	//for gaussian
@@ -24,8 +25,9 @@ struct BlockData {
 	double *x,*y,*z;
 	double *nonuniform_d;
 	double *uniform_d;
+    int *nonuniform_indices;
 	int jj;
-	KernelInfo *KK1,*KK2,*KK3;
+    int x_block_index,y_block_index,z_block_index;
 };
 
 #define PARALLEL_NONE 0
@@ -39,9 +41,19 @@ public:
 	friend class Block3DSpreaderPrivate;
 	Block3DSpreader();
 	virtual ~Block3DSpreader();
+    void setKernelInfo(KernelInfo KK1,KernelInfo KK2,KernelInfo KK3);
+    void setNumThreads(int num);
 	void addBlock(BlockData *B);
 	void setParallel(int parallel_type,int num_threads);
-	void run();
+    void precompute();
+    void run();
+
+    int blockCount();
+    BlockData *block(int ind);
+    KernelInfo KK1();
+    KernelInfo KK2();
+    KernelInfo KK3();
+    int numThreads();
 private:
 	Block3DSpreaderPrivate *d;
 };

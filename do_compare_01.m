@@ -8,7 +8,7 @@ eps=1e-6;
 
 % Create input data
 %E=create_3d_radial_example(200,200,200);
-E=create_random_sampling_example(8e6);
+E=create_random_sampling_example(2e7);
 %E=create_single_point_example([pi/5+pi,pi/7,pi/9]);
 %E=create_single_point_example([0,0,0]);
 %E=create_single_point_example([pi/3,pi/6,pi/7]);
@@ -37,11 +37,11 @@ opts_blocknufft_gaussian.kernel_type=1; % 1 -> Gaussian, 2 -> KB
 
 %blocknufft with blocking
 opts_blocknufft_blocking=opts_blocknufft;
-opts_blocknufft_blocking.K1=50; opts_blocknufft_blocking.K2=50; opts_blocknufft_blocking.K3=50;
+opts_blocknufft_blocking.K1=50; opts_blocknufft_blocking.K2=20; opts_blocknufft_blocking.K3=20;
 
 %blocknufft with multiple threads
 opts_blocknufft_multithread=opts_blocknufft_blocking;
-opts_blocknufft_multithread.num_threads=8;
+opts_blocknufft_multithread.num_threads=32;
 
 %fessler
 opts_fessler.oversamp=2;
@@ -59,7 +59,7 @@ opts_nfft_m7.m=7;
 % Uncomment the algorithms you want to test/compare
 % Gold standard uses eps=1e-10
 algorithms={
-    struct('name','gold standard','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_gold)
+    %struct('name','gold standard','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_gold)
     %struct('name','nufft fortran','alg_init',@alg_trivial_init,'alg_run',@alg_nufft3d1f90,'algopts',opts_nufft3d1f90)
     %struct('name','blocknufft-g','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_gaussian)
     %struct('name','blocknufft','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft)
@@ -83,15 +83,15 @@ for j=1:length(algorithms)
     algopts=algorithms{j}.algopts;
     fprintf('Initializing %s...\n',algorithms{j}.name);
     mem_before=get_used_memory();
-    tic;
+    ticA=tic;
     obj=alg_init(N1,N2,N3,xyz,algopts);
-    results{j}.init_time=toc;
+    results{j}.init_time=toc(ticA);
     mem_after=get_used_memory();
     results{j}.memory_used=(mem_after-mem_before)/1e6;
     fprintf('Running %s...\n',algorithms{j}.name);
-    tic;
+    ticA=tic;
     results{j}.output=alg_run(N1,N2,N3,xyz,d,obj,algopts);
-    results{j}.run_time=toc;
+    results{j}.run_time=toc(ticA);
     fprintf('Run time: %g\n',results{j}.run_time);
 end
 
@@ -180,10 +180,14 @@ M=size(xyz,1);
 N=[N1;N2;N3];
 %plan=nfft(3,N,M); 
 n=2^(ceil(log(max(N))/log(2))+1);
+ticA=tic;
 plan=nfft(3,N,M,n,n,n,opts.m,bitor(PRE_PHI_HUT,bitor(PRE_PSI,NFFT_OMP_BLOCKWISE_ADJOINT)),FFTW_MEASURE); % use of nfft_init_guru
+fprintf('time for creating nfft plan: %g s\n',toc(ticA));
 
-plan.x=xyz/(2*pi); % set nodes in plan
+plan.x=(xyz+pi)/(2*pi); % set nodes in plan
+ticA=tic;
 nfft_precompute_psi(plan); % precomputations
+fprintf('time for nfft_precompute_psi: %g s\n',toc(ticA));
 
 end
 
@@ -191,9 +195,7 @@ function X=alg_nfft_run(N1,N2,N3,xyz,d,obj,opts)
 
 M=size(xyz,1);
 obj.f=d;
-for k=1:10
 nfft_adjoint(obj);
-end;
 X=reshape(obj.fhat,[N1,N2,N3])/M;
 
 end
@@ -216,7 +218,7 @@ end
 
 function X=alg_nufft3d1f90(N1,N2,N3,xyz,d,obj,opts)
 
-X=nufft3d1f90(xyz(:,1),xyz(:,2),xyz(:,3),d,0,opts.eps,N1,N2,N3);
+X=nufft3d1f90(xyz(:,1)+pi,xyz(:,2)+pi,xyz(:,3)+pi,d,0,opts.eps,N1,N2,N3);
 
 end
 

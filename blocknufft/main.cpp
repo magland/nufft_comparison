@@ -29,13 +29,14 @@ int main(int argc, char *argv[])
     }
 
     for (int ii=0; ii<M; ii++) {
-        nonuniform_d[ii]=rand()*1.0/RAND_MAX * 2 - 1;
+        nonuniform_d[ii*2]=rand()*1.0/RAND_MAX * 2 - 1;
+        nonuniform_d[ii*2+1]=0;
     }
 
     //here is the procedure...
     printf("Running blocknufft3d...\n");
     QTime timer; timer.start();
-	blocknufft3d(N1,N2,N3,M,uniform_d,xyz,nonuniform_d,eps,K1,K2,K3,num_threads,kernel_type);
+    blocknufft3d(N1,N2,N3,M,uniform_d,xyz,nonuniform_d,eps,K1,K2,K3,num_threads,kernel_type);
     printf("ELAPSED TIME: %d\n",timer.elapsed());
 
     free(uniform_d);

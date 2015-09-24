@@ -15,16 +15,59 @@
 #define KERNEL_TYPE_GAUSSIAN		1
 #define KERNEL_TYPE_KB				2
 
+struct PrecomputeData {
+    int *xmins,*ymins,*zmins; //nearest grid points
+    int *xmaxs,*ymaxs,*zmaxs; //nearest grid points
+    int *iixs,*iiys,*iizs; //nearest grid points
+    double *xkernel,*ykernel,*zkernel;
+};
+
+PrecomputeData *newEmptyPrecomputeData() {
+    PrecomputeData *ret=new PrecomputeData;
+    ret->xmins=ret->ymins=ret->zmins=0;
+    ret->xmaxs=ret->ymaxs=ret->zmaxs=0;
+    ret->iixs=ret->iiys=ret->iizs=0;
+    ret->xkernel=ret->ykernel=ret->zkernel=0;
+    return ret;
+}
+
+void free_precompute_data(PrecomputeData *PD) {
+    if (PD->xmins) free(PD->xmins); PD->xmins=0;
+    if (PD->ymins) free(PD->ymins); PD->ymins=0;
+    if (PD->zmins) free(PD->zmins); PD->zmins=0;
+    if (PD->xmaxs) free(PD->xmaxs); PD->xmaxs=0;
+    if (PD->ymaxs) free(PD->ymaxs); PD->ymaxs=0;
+    if (PD->zmaxs) free(PD->zmaxs); PD->zmaxs=0;
+    if (PD->iixs) free(PD->iixs); PD->iixs=0;
+    if (PD->iiys) free(PD->iiys); PD->iiys=0;
+    if (PD->iizs) free(PD->iizs); PD->iizs=0;
+    if (PD->xkernel) free(PD->xkernel); PD->xkernel=0;
+    if (PD->ykernel) free(PD->ykernel); PD->ykernel=0;
+    if (PD->zkernel) free(PD->zkernel); PD->zkernel=0;
+}
+
+void free_block_data(BlockData *BD) {
+    free(BD->x);
+    free(BD->y);
+    free(BD->z);
+    free(BD->nonuniform_d);
+    free(BD->uniform_d);
+    free(BD->nonuniform_indices);
+}
+
 class Block3DSpreaderPrivate {
 public:
 	Block3DSpreader *q;
 	QList<BlockData *> m_blocks;
+    QList<PrecomputeData *> m_precompute_data; //one for every block
 	int m_parallel_type;
 	int m_num_threads;
+    int m_kernel_type;
+    KernelInfo KK1,KK2,KK3;
 
 	void blockspread3d(BlockData *BD);
-
 };
+void precompute_block(BlockData *BD,PrecomputeData *PD,KernelInfo KK1,KernelInfo KK2,KernelInfo KK3);
 
 Block3DSpreader::Block3DSpreader()
 {
@@ -32,11 +75,32 @@ Block3DSpreader::Block3DSpreader()
 	d->q=this;
 	d->m_parallel_type=PARALLEL_NONE;
 	d->m_num_threads=1;
+    d->m_kernel_type=0;
 }
 
 Block3DSpreader::~Block3DSpreader()
 {
-	delete d;
+    for (int i=0; i<d->m_precompute_data.count(); i++) {
+        free_precompute_data(d->m_precompute_data.value(i));
+        delete d->m_precompute_data.value(i);
+    }
+    for (int i=0; i<d->m_precompute_data.count(); i++) {
+        free_block_data(d->m_blocks.value(i));
+        delete d->m_blocks.value(i);
+    }
+    delete d;
+}
+
+void Block3DSpreader::setKernelInfo(KernelInfo KK1,KernelInfo KK2,KernelInfo KK3)
+{
+    d->KK1=KK1;
+    d->KK2=KK2;
+    d->KK3=KK3;
+}
+
+void Block3DSpreader::setNumThreads(int num)
+{
+    d->m_num_threads=num;
 }
 
 bool check_valid_inputs(BlockData *BD) {
@@ -81,7 +145,6 @@ void evaluate_kernel_1d(double *out,double diff,int imin,int imax,const KernelIn
 		for (int ii=imin; ii<=imax; ii++) {
             //out[ii-imin]=1;
 
-
 			double x=diff-ii;
 			double tmp1=1-(2*x/KK.W)*(2*x/KK.W);
 			if (tmp1<0) {
@@ -97,63 +160,27 @@ void evaluate_kernel_1d(double *out,double diff,int imin,int imax,const KernelIn
 	}
 }
 
-
-void do_spreading(BlockData *BD) {
-    double *x_kernel=(double *)malloc(sizeof(double)*(BD->KK1->nspread+1));
-    double *y_kernel=(double *)malloc(sizeof(double)*(BD->KK2->nspread+1));
-    double *z_kernel=(double *)malloc(sizeof(double)*(BD->KK3->nspread+1));
-
+void do_spreading(BlockData *BD,PrecomputeData *PD,double *uniform_d,double *nonuniform_d,KernelInfo KK1,KernelInfo KK2,KernelInfo KK3) {
 	double N1o_times_2=BD->N1o*2;
 	double N1oN2o_times_2=BD->N1o*BD->N2o*2;
 	double N1oN2oN3o_times_2=BD->N1o*BD->N2o*BD->N3o*2;
 	for (int ii=0; ii<N1oN2oN3o_times_2; ii++) BD->uniform_d[ii]=0;
 	for (int jj=0; jj<BD->M; jj++) {
-		double x0=BD->x[jj],y0=BD->y[jj],z0=BD->z[jj],d0_re=BD->nonuniform_d[jj*2],d0_im=BD->nonuniform_d[jj*2+1];
+        double d0_re=nonuniform_d[jj*2],d0_im=nonuniform_d[jj*2+1];
 
-		int x_integer=ROUND_2_INT(x0);
-		double x_diff=x0-x_integer;
-		int y_integer=ROUND_2_INT(y0);
-		double y_diff=y0-y_integer;
-		int z_integer=ROUND_2_INT(z0);
-		double z_diff=z0-z_integer;
+        int xmin=PD->xmins[jj];
+        int xmax=PD->xmaxs[jj];
+        int iix=PD->iixs[jj];
+        int ymin=PD->ymins[jj];
+        int ymax=PD->ymaxs[jj];
+        int iiy=PD->iiys[jj];
+        int zmin=PD->zmins[jj];
+        int zmax=PD->zmaxs[jj];
+        int iiz=PD->iizs[jj];
 
-		evaluate_kernel_1d(x_kernel,x_diff,-BD->KK1->nspread/2,-BD->KK1->nspread/2+BD->KK1->nspread,*BD->KK1);
-		evaluate_kernel_1d(y_kernel,y_diff,-BD->KK2->nspread/2,-BD->KK2->nspread/2+BD->KK2->nspread,*BD->KK2);
-		evaluate_kernel_1d(z_kernel,z_diff,-BD->KK3->nspread/2,-BD->KK3->nspread/2+BD->KK3->nspread,*BD->KK3);
-
-		int xmin,xmax;
-		if (x_diff<0) {
-			xmin=fmax(x_integer-BD->KK1->nspread/2,0);
-			xmax=fmin(x_integer+BD->KK1->nspread/2-1,BD->N1o-1);
-		}
-		else {
-			xmin=fmax(x_integer-BD->KK1->nspread/2+1,0);
-			xmax=fmin(x_integer+BD->KK1->nspread/2,BD->N1o-1);
-		}
-		int iix=xmin-(x_integer-BD->KK1->nspread/2);
-
-		int ymin,ymax;
-		if (y_diff<0) {
-			ymin=fmax(y_integer-BD->KK2->nspread/2,0);
-			ymax=fmin(y_integer+BD->KK2->nspread/2-1,BD->N2o-1);
-		}
-		else {
-			ymin=fmax(y_integer-BD->KK2->nspread/2+1,0);
-			ymax=fmin(y_integer+BD->KK2->nspread/2,BD->N2o-1);
-		}
-		int iiy=ymin-(y_integer-BD->KK2->nspread/2);
-
-		int zmin,zmax;
-		if (z_diff<0) {
-			zmin=fmax(z_integer-BD->KK3->nspread/2,0);
-			zmax=fmin(z_integer+BD->KK3->nspread/2-1,BD->N3o-1);
-		}
-		else {
-			zmin=fmax(z_integer-BD->KK3->nspread/2+1,0);
-			zmax=fmin(z_integer+BD->KK3->nspread/2,BD->N3o-1);
-		}
-		int iiz=zmin-(z_integer-BD->KK3->nspread/2);
-
+        double *x_kernel=&PD->xkernel[jj*(KK1.nspread+1)];
+        double *y_kernel=&PD->ykernel[jj*(KK2.nspread+1)];
+        double *z_kernel=&PD->zkernel[jj*(KK3.nspread+1)];
 
 		int xmax_minus_xmin_plus_iix=xmax-xmin+iix;
 		int xmin_times_2=xmin*2;
@@ -168,8 +195,8 @@ void do_spreading(BlockData *BD) {
 				int kkk3=kkk2+xmin_times_2; //remember it is complex
 				for (int ix0=iix; ix0<=xmax_minus_xmin_plus_iix; ix0++) {
 					//most of the time is spent inside this inner-most loop
-					BD->uniform_d[kkk3]+=x_kernel[ix0]*kernval_01_times_d0_re;
-					BD->uniform_d[kkk3+1]+=x_kernel[ix0]*kernval_01_times_d0_im;
+                    uniform_d[kkk3]+=x_kernel[ix0]*kernval_01_times_d0_re;
+                    uniform_d[kkk3+1]+=x_kernel[ix0]*kernval_01_times_d0_im;
 					kkk3+=2; //remember it is complex
 				}
 				kkk2+=N1o_times_2; //remember complex
@@ -177,16 +204,17 @@ void do_spreading(BlockData *BD) {
 		}
 
 	}
-    free(x_kernel);
-    free(y_kernel);
-    free(z_kernel);
 }
 
-
-
 // Here's the spreading!
-bool blockspread3d(BlockData *BD) {
+bool blockspread3d(BlockData *BD,PrecomputeData *PD,double *uniform_d,double *nonuniform_d,KernelInfo KK1,KernelInfo KK2,KernelInfo KK3) {
     QTime timer0; timer0.start();
+
+    bool precomputed=false;
+    if (PD->xkernel) precomputed=true;
+    if (!precomputed) {
+        precompute_block(BD,PD,KK1,KK2,KK3);
+    }
 
 	// Transfer opts and other parameters to D
 
@@ -196,8 +224,12 @@ bool blockspread3d(BlockData *BD) {
 		return false;
 	}
 
-	do_spreading(BD);
-    printf ("############# elapsed for blockspread3d (%d x %d x %d) M=%d: %d\n",BD->N1o,BD->N2o,BD->N3o,BD->M,timer0.elapsed());
+    do_spreading(BD,PD,uniform_d,nonuniform_d,KK1,KK2,KK3);
+    //printf ("############# elapsed for blockspread3d (%d x %d x %d) M=%d: %d\n",BD->N1o,BD->N2o,BD->N3o,BD->M,timer0.elapsed());
+
+    if (!precomputed) {
+        free_precompute_data(PD);
+    }
 
 	return true;
 }
@@ -206,29 +238,121 @@ bool blockspread3d(BlockData *BD) {
 void Block3DSpreader::addBlock(BlockData *B)
 {
 	d->m_blocks.append(B);
+    d->m_precompute_data.append(newEmptyPrecomputeData());
 }
 
 void Block3DSpreader::setParallel(int parallel_type, int num_threads)
 {
 	d->m_parallel_type=parallel_type;
-	d->m_num_threads=num_threads;
+    d->m_num_threads=num_threads;
 }
 
-pid_t blockspread3d_fork(BlockData *BD) {
-	pid_t pid=fork();
-	if (pid==0) { //child
-        printf ("Running forked child...\n");
-		blockspread3d(BD);
-        printf ("Forked child finished.\n");
-		exit(0);
-	}
-	else if (pid>0) { //parent
-		return pid;
-	}
-	else {
-        printf ("ERROR: Unable to fork process!\n");
-		return 0;
-	}
+void Block3DSpreader::precompute()
+{
+    int num_blocks=d->m_blocks.count();
+    if (d->m_parallel_type==PARALLEL_NONE) {
+        for (int i=0; i<num_blocks; i++) {
+            BlockData *BD=d->m_blocks.value(i);
+            PrecomputeData *PD=d->m_precompute_data.value(i);
+            precompute_block(BD,PD,d->KK1,d->KK2,d->KK3);
+        }
+    }
+    else if (d->m_parallel_type==PARALLEL_OPENMP) {
+        omp_set_num_threads(d->m_num_threads);
+        #pragma omp parallel
+        {
+            #pragma omp for
+            for (int i=0; i<num_blocks; i++) {
+                BlockData *BD=d->m_blocks.value(i);
+                PrecomputeData *PD=d->m_precompute_data.value(i);
+                precompute_block(BD,PD,d->KK1,d->KK2,d->KK3);
+            }
+        }
+    }
+
+
+}
+
+void precompute_block(BlockData *BD, PrecomputeData *PD,KernelInfo KK1,KernelInfo KK2,KernelInfo KK3)
+{
+    free_precompute_data(PD);
+
+    PD->xkernel=(double *)malloc(sizeof(double)*(KK1.nspread+1)*BD->M);
+    PD->ykernel=(double *)malloc(sizeof(double)*(KK2.nspread+1)*BD->M);
+    PD->zkernel=(double *)malloc(sizeof(double)*(KK3.nspread+1)*BD->M);
+    PD->xmins=(int *)malloc(sizeof(double)*BD->M);
+    PD->ymins=(int *)malloc(sizeof(double)*BD->M);
+    PD->zmins=(int *)malloc(sizeof(double)*BD->M);
+    PD->xmaxs=(int *)malloc(sizeof(double)*BD->M);
+    PD->ymaxs=(int *)malloc(sizeof(double)*BD->M);
+    PD->zmaxs=(int *)malloc(sizeof(double)*BD->M);
+    PD->iixs=(int *)malloc(sizeof(double)*BD->M);
+    PD->iiys=(int *)malloc(sizeof(double)*BD->M);
+    PD->iizs=(int *)malloc(sizeof(double)*BD->M);
+
+    for (int i=0; i<BD->M; i++) {
+        double x0=BD->x[i];
+        double y0=BD->y[i];
+        double z0=BD->z[i];
+
+        int x_integer=ROUND_2_INT(x0);
+        double x_diff=x0-x_integer;
+        int y_integer=ROUND_2_INT(y0);
+        double y_diff=y0-y_integer;
+        int z_integer=ROUND_2_INT(z0);
+        double z_diff=z0-z_integer;
+
+        int xmin,xmax;
+        if (x_diff<0) {
+            xmin=fmax(x_integer-KK1.nspread/2,0);
+            xmax=fmin(x_integer+KK1.nspread/2-1,BD->N1o-1);
+        }
+        else {
+            xmin=fmax(x_integer-KK1.nspread/2+1,0);
+            xmax=fmin(x_integer+KK1.nspread/2,BD->N1o-1);
+        }
+        int iix=xmin-(x_integer-KK1.nspread/2);
+
+        int ymin,ymax;
+        if (y_diff<0) {
+            ymin=fmax(y_integer-KK2.nspread/2,0);
+            ymax=fmin(y_integer+KK2.nspread/2-1,BD->N2o-1);
+        }
+        else {
+            ymin=fmax(y_integer-KK2.nspread/2+1,0);
+            ymax=fmin(y_integer+KK2.nspread/2,BD->N2o-1);
+        }
+        int iiy=ymin-(y_integer-KK2.nspread/2);
+
+        int zmin,zmax;
+        if (z_diff<0) {
+            zmin=fmax(z_integer-KK3.nspread/2,0);
+            zmax=fmin(z_integer+KK3.nspread/2-1,BD->N3o-1);
+        }
+        else {
+            zmin=fmax(z_integer-KK3.nspread/2+1,0);
+            zmax=fmin(z_integer+KK3.nspread/2,BD->N3o-1);
+        }
+        int iiz=zmin-(z_integer-KK3.nspread/2);
+
+        double *x_kernel=&PD->xkernel[(KK1.nspread+1)*i];
+        double *y_kernel=&PD->ykernel[(KK2.nspread+1)*i];
+        double *z_kernel=&PD->zkernel[(KK3.nspread+1)*i];
+
+        evaluate_kernel_1d(x_kernel,x_diff,-KK1.nspread/2,-KK1.nspread/2+KK1.nspread,KK1);
+        evaluate_kernel_1d(y_kernel,y_diff,-KK2.nspread/2,-KK2.nspread/2+KK2.nspread,KK2);
+        evaluate_kernel_1d(z_kernel,z_diff,-KK3.nspread/2,-KK3.nspread/2+KK3.nspread,KK3);
+
+        PD->xmins[i]=xmin;
+        PD->xmaxs[i]=xmax;
+        PD->iixs[i]=iix;
+        PD->ymins[i]=ymin;
+        PD->ymaxs[i]=ymax;
+        PD->iiys[i]=iiy;
+        PD->zmins[i]=zmin;
+        PD->zmaxs[i]=zmax;
+        PD->iizs[i]=iiz;
+    }
 }
 
 void Block3DSpreader::run()
@@ -237,7 +361,8 @@ void Block3DSpreader::run()
 	if (d->m_parallel_type==PARALLEL_NONE) {
 		for (int bb=0; bb<num_blocks; bb++) {
 			BlockData *BD=d->m_blocks.value(bb);
-			blockspread3d(BD);
+            PrecomputeData *PD=d->m_precompute_data.value(bb);
+            blockspread3d(BD,PD,BD->uniform_d,BD->nonuniform_d,d->KK1,d->KK2,d->KK3);
 		}
 	}
 	else if (d->m_parallel_type==PARALLEL_OPENMP) {
@@ -247,36 +372,37 @@ void Block3DSpreader::run()
 			#pragma omp for
 			for (int bb=0; bb<num_blocks; bb++) {
 				BlockData *BD=d->m_blocks.value(bb);
-				blockspread3d(BD);
+                PrecomputeData *PD=d->m_precompute_data.value(bb);
+                blockspread3d(BD,PD,BD->uniform_d,BD->nonuniform_d,d->KK1,d->KK2,d->KK3);
 			}
 		}
-	}
-	else if (d->m_parallel_type==PARALLEL_FORK) {
-		int pids[num_blocks];
-		int bb=0;
-		int num_completed=0;
-		while (bb<num_blocks) {
-			while (bb-num_completed<d->m_num_threads) {
-				BlockData *BD=d->m_blocks.value(bb);
-				int pid=blockspread3d_fork(BD);
-				pids[bb]=pid;
-				bb++;
-			}
-			int status=-1;
-			if (pids[num_completed]>0) {
-				waitpid(pids[num_completed],&status,WUNTRACED);
-			}
-			if (status!=0) {
-                printf ("ERROR: Child process failed.\n");
-			}
-			else {
-                printf ("Forked child completed.\n");
-			}
-			num_completed++;
-		}
-	}
+    }
 }
 
+int Block3DSpreader::blockCount()
+{
+    return d->m_blocks.count();
+}
 
+BlockData *Block3DSpreader::block(int ind)
+{
+    return d->m_blocks.value(ind);
+}
 
+KernelInfo Block3DSpreader::KK1()
+{
+    return d->KK1;
+}
+KernelInfo Block3DSpreader::KK2()
+{
+    return d->KK2;
+}
+KernelInfo Block3DSpreader::KK3()
+{
+    return d->KK3;
+}
 
+int Block3DSpreader::numThreads()
+{
+    return d->m_num_threads;
+}
