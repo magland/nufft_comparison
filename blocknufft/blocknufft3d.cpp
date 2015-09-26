@@ -60,16 +60,19 @@ void setup_lookup_exp3(double tau) {
 }
 
 
-//
-Block3DSpreader *blocknufft3d_prepare(const BlockNufft3DOptions &opts,double *x,double *y,double *z) {
-    QTime blocknufft3d_prepare_timer; blocknufft3d_prepare_timer.start();
+//Creates a plan and returns a pointer to a Block3DSpreader object
+void *blocknufft3d_create_plan(BlockNufft3DOptions opts,double *x_in,double *y_in,double *z_in) {
+    QTime blocknufft3d_create_plan_timer; blocknufft3d_create_plan_timer.start();
     QTime timer0; timer0.start();
 
     printf ("\nStarting precompute_blocknufft3d.\n");
 
+    int initialization_time=timer0.elapsed();
+    printf ("  Initialization: %d ms\n",(int)initialization_time);
+
     //check the inputs
     for (int i=0; i<opts.M; i++) {
-        if ((x[i]<-M_PI)||(x[i]>=M_PI)||(y[i]<-M_PI)||(y[i]>=M_PI)||(z[i]<-M_PI)||(z[i]>=M_PI)) {
+        if ((x_in[i]<-M_PI)||(x_in[i]>=M_PI)||(y_in[i]<-M_PI)||(y_in[i]>=M_PI)||(z_in[i]<-M_PI)||(z_in[i]>=M_PI)) {
             printf("PROBLEM preparing spreader: input locations are out of range (should be >=-pi and <pi\n");
             return 0;
         }
@@ -174,47 +177,62 @@ Block3DSpreader *blocknufft3d_prepare(const BlockNufft3DOptions &opts,double *x,
 
     Block3DSpreader *SS=new Block3DSpreader;
     SS->setKernelInfo(KK1,KK2,KK3);
+    SS->setN(opts.N1,opts.N2,opts.N3);
+    SS->setM(opts.M);
 
     omp_set_num_threads(opts.num_threads);
 
     int N1o=(int)(opts.N1*KK1.oversamp); int N2o=(int)(opts.N2*KK2.oversamp); int N3o=(int)(opts.N3*KK3.oversamp);
 
+    double *x=(double *) malloc(sizeof(double)*opts.M);
+    double *y=(double *) malloc(sizeof(double)*opts.M);
+    double *z=(double *) malloc(sizeof(double)*opts.M);
+
     //The input locations are between -pi and pi.... we change them to be between 0 and N1o/N2o/N3o
-    //We put these back before exiting!
+    //But the 0 frequency needs to correspond to 0!
     double factor_x=N1o/(2*M_PI);
     double factor_y=N2o/(2*M_PI);
     double factor_z=N3o/(2*M_PI);
     for (int ii=0; ii<opts.M; ii++) {
-        x[ii]=(x[ii]+M_PI)*factor_x;
-        y[ii]=(y[ii]+M_PI)*factor_y;
-        z[ii]=(z[ii]+M_PI)*factor_z;
+        x[ii]=(x_in[ii]>=0) ? x_in[ii]*factor_x : (x_in[ii]+2*M_PI)*factor_x;
+        y[ii]=(y_in[ii]>=0) ? y_in[ii]*factor_y : (y_in[ii]+2*M_PI)*factor_y;
+        z[ii]=(z_in[ii]>=0) ? z_in[ii]*factor_z : (z_in[ii]+2*M_PI)*factor_z;
     }
-
-    int initialization_time=timer0.elapsed();
-    printf ("  Initialization: %d ms\n",(int)initialization_time);
 
     timer0.start();
     //create blocks
     int num_blocks_x=ceil(N1o*1.0/opts.K1);
     int num_blocks_y=ceil(N2o*1.0/opts.K2);
     int num_blocks_z=ceil(N3o*1.0/opts.K3);
+    //NOTE: for the combining step (below) we use a checkerboard-style pattern to avoid conflicts in parallelization
+    //      so we need to make sure that the number of blocks in each direction is either 1 or is even
+    if ((num_blocks_x>1)&&(num_blocks_x%2==1)) num_blocks_x++;
+    if ((num_blocks_y>1)&&(num_blocks_y%2==1)) num_blocks_y++;
+    if ((num_blocks_z>1)&&(num_blocks_z%2==1)) num_blocks_z++;
+    //Now update the block sizes
+    opts.K1=ceil(N1o*1.0/num_blocks_x);
+    opts.K2=ceil(N2o*1.0/num_blocks_y);
+    opts.K3=ceil(N3o*1.0/num_blocks_z);
     {
         int bb=0;
         for (int i3=0; i3<num_blocks_z; i3++) {
             for (int i2=0; i2<num_blocks_y; i2++) {
                 for (int i1=0; i1<num_blocks_x; i1++) {
                     BlockData *BD=new BlockData;
-                    BD->x_block_index=i1;
+                    BD->x_block_index=i1; //we'll need this later for the checkboard-style combining step
                     BD->y_block_index=i2;
                     BD->z_block_index=i3;
-                    BD->xmin=i1*opts.K1; BD->xmax=fmin((i1+1)*opts.K1-1,N1o-1);
+                    BD->xmin=i1*opts.K1; BD->xmax=fmin((i1+1)*opts.K1-1,N1o-1); //set the min and max indices for each block
                     BD->ymin=i2*opts.K2; BD->ymax=fmin((i2+1)*opts.K2-1,N2o-1);
                     BD->zmin=i3*opts.K3; BD->zmax=fmin((i3+1)*opts.K3-1,N3o-1);
-                    BD->N1o=BD->xmax-BD->xmin+1+KK1.nspread;
+                    if (i1+1==num_blocks_x) BD->xmax=N1o-1; //make sure the final block goes all the way to the end
+                    if (i2+1==num_blocks_y) BD->xmax=N2o-1;
+                    if (i3+1==num_blocks_z) BD->xmax=N3o-1;
+                    BD->N1o=BD->xmax-BD->xmin+1+KK1.nspread; //the block size
                     BD->N2o=BD->ymax-BD->ymin+1+KK2.nspread;
                     BD->N3o=BD->zmax-BD->zmin+1+KK3.nspread;
-                    BD->M=0;
-                    SS->addBlock(BD);
+                    BD->M=0; //we'll tally this up later
+                    SS->addBlock(BD); //add this block to the spreader
                     bb++;
                 }
             }
@@ -287,36 +305,42 @@ Block3DSpreader *blocknufft3d_prepare(const BlockNufft3DOptions &opts,double *x,
     double precompute_time=timer0.elapsed();
     printf ("  Precompute: %d ms\n",(int)precompute_time);
 
-    for (int ii=0; ii<opts.M; ii++) {
-        x[ii]=x[ii]/factor_x-M_PI;
-        y[ii]=y[ii]/factor_y-M_PI;
-        z[ii]=z[ii]/factor_z-M_PI;
-    }
+    free(x); free(y); free(z);
 
-    printf("Elapsed time for blocknufft3d_prepare: %d ms\n",blocknufft3d_prepare_timer.elapsed());
+    printf("ELAPSED TIME for blocknufft3d_create_plan: %.3f seconds\n",blocknufft3d_create_plan_timer.elapsed()*1.0/1000);
 
     return SS;
 }
 
-// Here's the nufft!
-bool blocknufft3d_run(Block3DSpreader *SS,const BlockNufft3DOptions &opts,double *out,double *d) {
+//Anoter interface for creating the plan
+void *blocknufft3d_create_plan(int N1,int N2,int N3,int M,double *x,double *y,double *z,double eps,int K1,int K2,int K3,int num_threads,int kernel_type) {
+    BlockNufft3DOptions opts;
+    opts.N1=N1; opts.N2=N2; opts.N3=N3;
+    opts.M=M;
+    opts.K1=K1; opts.K2=K2; opts.K3=K3;
+    opts.eps=eps;
+    opts.kernel_type=kernel_type;
+    opts.num_threads=num_threads;
 
-    if (!SS) {
-        printf("Problem running nufft... SS is null.\n");
+    return blocknufft3d_create_plan(opts,x,y,z);
+}
+
+// Here's the nufft run!
+bool blocknufft3d_run(void *plan,double *out,double *d) {
+
+    if (!plan) {
+        printf("Problem running nufft... plan is null.\n");
         return false;
     }
 
-
+    Block3DSpreader *SS=(Block3DSpreader *)plan;
     QTime blocknufft3d_timer; blocknufft3d_timer.start();
-
-    omp_set_num_threads(opts.num_threads);
-
-
+    omp_set_num_threads(SS->numThreads());
     QTime timer0;
 
     ////////////////////////////////////////////////////////////////////
     timer0.start();
-    int N1o=(int)(opts.N1*SS->KK1().oversamp); int N2o=(int)(opts.N2*SS->KK2().oversamp); int N3o=(int)(opts.N3*SS->KK3().oversamp);
+    int N1o=(int)(SS->N1()*SS->KK1().oversamp); int N2o=(int)(SS->N2()*SS->KK2().oversamp); int N3o=(int)(SS->N3()*SS->KK3().oversamp);
 
     double *out_oversamp=(double *)malloc(sizeof(double)*N1o*N2o*N3o*2);
     double *out_oversamp_hat=(double *)malloc(sizeof(double)*N1o*N2o*N3o*2);
@@ -335,8 +359,13 @@ bool blocknufft3d_run(Block3DSpreader *SS,const BlockNufft3DOptions &opts,double
     ////////////////////////////////////////////////////////////////////
     timer0.start();
     SS->run();
+    double spreading_operation_count=0;
+    for (int j=0; j<SS->blockCount(); j++) {
+        BlockData *BD=SS->block(j);
+        spreading_operation_count+=BD->M*SS->KK1().nspread*SS->KK2().nspread*SS->KK3().nspread*4;
+    }
     double spreading_time=timer0.elapsed();
-    printf ("  Spreading: %d ms\n",(int)spreading_time);
+    printf ("  Spreading: %d ms (%g megaflops)\n",(int)spreading_time,spreading_operation_count*1.0/spreading_time*1000/1e6);
 
     ////////////////////////////////////////////////////////////////////
     timer0.start();
@@ -352,10 +381,10 @@ bool blocknufft3d_run(Block3DSpreader *SS,const BlockNufft3DOptions &opts,double
      * Now we need to combine the output data from the blocks.
      * And we'd like to parallelize this step. However, due to overlaps, we cannot just let every
      * block have at it simultaneously. So we need to use a checkerboard pattern and do 8 passes!
-     *
+     * This is why we NEED to make sure we have an even number of blocks in each direction (or 1 is okay)!!
+     * This is guaranteed/handled above
      */
     QTime combining_timer; combining_timer.start(); int combining_operation_count=0;
-    int num_internal=0;
     for (int bb_z_parity=0; bb_z_parity<2; bb_z_parity++)
     for (int bb_y_parity=0; bb_y_parity<2; bb_y_parity++)
     for (int bb_x_parity=0; bb_x_parity<2; bb_x_parity++) {
@@ -384,7 +413,6 @@ bool blocknufft3d_run(Block3DSpreader *SS,const BlockNufft3DOptions &opts,double
                                 local_operation_count+=BD->N1o*2;
                             }
                         }
-                        num_internal++;
                     }
                     else {
                         //in this case we need to worry about modulos (wrapping)
@@ -411,16 +439,13 @@ bool blocknufft3d_run(Block3DSpreader *SS,const BlockNufft3DOptions &opts,double
             combining_operation_count+=local_operation_count;
         }
     }
-    printf("For combining, we have %g operations per second., %d/%d internal.\n",combining_operation_count*1.0/(combining_timer.elapsed())*1000,num_internal,SS->blockCount());
-
-
     double combining_time=timer0.elapsed();
-    printf ("  Combining: %d ms\n",(int)combining_time);
+    printf ("  Combining: %d ms (%g megaflops)\n",(int)combining_time,combining_operation_count*1.0/combining_time*1000/1e6);
 
     ////////////////////////////////////////////////////////////////////
     timer0.start();
     //fft
-	if (!do_fft_3d(N1o,N2o,N3o,out_oversamp_hat,out_oversamp,opts.num_threads)) {
+    if (!do_fft_3d(N1o,N2o,N3o,out_oversamp_hat,out_oversamp,SS->numThreads())) {
         printf ("problem in do_fft_3d\n");
 		free(out_oversamp);
 		free(out_oversamp_hat);
@@ -432,7 +457,7 @@ bool blocknufft3d_run(Block3DSpreader *SS,const BlockNufft3DOptions &opts,double
     ////////////////////////////////////////////////////////////////////
     timer0.start();
     //correction
-    do_fix_3d(opts.N1,opts.N2,opts.N3,opts.M,SS->KK1(),SS->KK2(),SS->KK3(),out,out_oversamp_hat);
+    do_fix_3d(SS->N1(),SS->N2(),SS->N3(),SS->M(),SS->KK1(),SS->KK2(),SS->KK3(),out,out_oversamp_hat);
     double correction_time=timer0.elapsed();
     printf ("  Correction: %d ms\n",(int)correction_time);
 
@@ -447,16 +472,23 @@ bool blocknufft3d_run(Block3DSpreader *SS,const BlockNufft3DOptions &opts,double
 
     double total_time=blocknufft3d_timer.elapsed();
 
-    printf ("Elapsed time: %.3f seconds\n",total_time/1000);
     printf ("   %.3f spreading, %.3f fft, %.3f other\n",spreading_time/1000,fft_time/1000,(total_time-spreading_time-fft_time)/1000);
     printf ("   %.1f%% spreading, %.1f%% fft, %.1f%% other\n",spreading_time/total_time*100,fft_time/total_time*100,(total_time-spreading_time-fft_time)/total_time*100);
+    printf ("ELAPSED TIME for blocknufft3d_run: %.3f seconds\n",total_time/1000);
 
     printf ("done with blocknufft3d.\n");
 
 	return true;
 }
 
-// This is the mcwrap interface
+//Be sure to destroy the plan to free up memory
+void blocknufft3d_destroy_plan(void *plan) {
+    if (!plan) return;
+    Block3DSpreader *SS=(Block3DSpreader *)plan;
+    delete SS;
+}
+
+// This is the mcwrap interface that does both create_plan and run from MATLAB
 void blocknufft3d(int N1,int N2,int N3,int M,double *uniform_d,double *xyz,double *nonuniform_d,double eps,int K1,int K2,int K3,int num_threads,int kernel_type) {
 	BlockNufft3DOptions opts;
 	opts.eps=eps;
@@ -469,9 +501,9 @@ void blocknufft3d(int N1,int N2,int N3,int M,double *uniform_d,double *xyz,doubl
 	double *x=&xyz[0];
 	double *y=&xyz[M];
 	double *z=&xyz[2*M];
-    Block3DSpreader *SS=blocknufft3d_prepare(opts,x,y,z);
-    blocknufft3d_run(SS,opts,uniform_d,nonuniform_d);
-    delete SS;
+    void *plan=blocknufft3d_create_plan(opts,x,y,z);
+    blocknufft3d_run(plan,uniform_d,nonuniform_d);
+    blocknufft3d_destroy_plan(plan);
 }
 
 /////////////////////////////////////////////

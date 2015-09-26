@@ -43,6 +43,8 @@ public:
 	virtual ~Block3DSpreader();
     void setKernelInfo(KernelInfo KK1,KernelInfo KK2,KernelInfo KK3);
     void setNumThreads(int num);
+    void setN(int N1,int N2,int N3); //for information in the run
+    void setM(int M); //for information in the run
 	void addBlock(BlockData *B);
 	void setParallel(int parallel_type,int num_threads);
     void precompute();
@@ -54,6 +56,10 @@ public:
     KernelInfo KK2();
     KernelInfo KK3();
     int numThreads();
+    int N1();
+    int N2();
+    int N3();
+    int M();
 private:
 	Block3DSpreaderPrivate *d;
 };

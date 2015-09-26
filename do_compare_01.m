@@ -8,9 +8,9 @@ eps=1e-6;
 
 % Create input data
 %E=create_3d_radial_example(200,200,200);
-E=create_random_sampling_example(2e7);
+E=create_random_sampling_example(8e6);
 %E=create_single_point_example([pi/5+pi,pi/7,pi/9]);
-%E=create_single_point_example([0,0,0]);
+%E=create_single_point_example([-pi/6,-pi/6,-pi/6]); E.d=E.d*(i);
 %E=create_single_point_example([pi/3,pi/6,pi/7]);
 xyz=cat(2,E.x,E.y,E.z);
 d=E.d;
@@ -37,11 +37,11 @@ opts_blocknufft_gaussian.kernel_type=1; % 1 -> Gaussian, 2 -> KB
 
 %blocknufft with blocking
 opts_blocknufft_blocking=opts_blocknufft;
-opts_blocknufft_blocking.K1=50; opts_blocknufft_blocking.K2=20; opts_blocknufft_blocking.K3=20;
+opts_blocknufft_blocking.K1=50; opts_blocknufft_blocking.K2=50; opts_blocknufft_blocking.K3=50;
 
 %blocknufft with multiple threads
 opts_blocknufft_multithread=opts_blocknufft_blocking;
-opts_blocknufft_multithread.num_threads=32;
+opts_blocknufft_multithread.num_threads=8;
 
 %fessler
 opts_fessler.oversamp=2;
@@ -63,8 +63,8 @@ algorithms={
     %struct('name','nufft fortran','alg_init',@alg_trivial_init,'alg_run',@alg_nufft3d1f90,'algopts',opts_nufft3d1f90)
     %struct('name','blocknufft-g','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_gaussian)
     %struct('name','blocknufft','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft)
-    %struct('name','blocknufft-b','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_blocking)
-    struct('name','blocknufft-mb','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_multithread)
+    struct('name','blocknufft-b','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_blocking)
+    %struct('name','blocknufft-mb','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_multithread)
     %struct('name','nufft Fessler','alg_init',@alg_fessler_init,'alg_run',@alg_fessler_run,'algopts',opts_fessler)
     %struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m1)
     %struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m2)
@@ -184,7 +184,7 @@ ticA=tic;
 plan=nfft(3,N,M,n,n,n,opts.m,bitor(PRE_PHI_HUT,bitor(PRE_PSI,NFFT_OMP_BLOCKWISE_ADJOINT)),FFTW_MEASURE); % use of nfft_init_guru
 fprintf('time for creating nfft plan: %g s\n',toc(ticA));
 
-plan.x=(xyz+pi)/(2*pi); % set nodes in plan
+plan.x=(xyz)/(2*pi); % set nodes in plan
 ticA=tic;
 nfft_precompute_psi(plan); % precomputations
 fprintf('time for nfft_precompute_psi: %g s\n',toc(ticA));
@@ -218,7 +218,7 @@ end
 
 function X=alg_nufft3d1f90(N1,N2,N3,xyz,d,obj,opts)
 
-X=nufft3d1f90(xyz(:,1)+pi,xyz(:,2)+pi,xyz(:,3)+pi,d,0,opts.eps,N1,N2,N3);
+X=nufft3d1f90(xyz(:,1),xyz(:,2),xyz(:,3),d,0,opts.eps,N1,N2,N3);
 
 end
 

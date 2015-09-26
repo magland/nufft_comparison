@@ -62,6 +62,8 @@ public:
     QList<PrecomputeData *> m_precompute_data; //one for every block
 	int m_parallel_type;
 	int m_num_threads;
+    int m_N1,m_N2,m_N3;
+    int m_M;
     int m_kernel_type;
     KernelInfo KK1,KK2,KK3;
 
@@ -76,6 +78,8 @@ Block3DSpreader::Block3DSpreader()
 	d->m_parallel_type=PARALLEL_NONE;
 	d->m_num_threads=1;
     d->m_kernel_type=0;
+    d->m_N1=d->m_N2=d->m_N3=0;
+    d->m_M=0;
 }
 
 Block3DSpreader::~Block3DSpreader()
@@ -101,6 +105,18 @@ void Block3DSpreader::setKernelInfo(KernelInfo KK1,KernelInfo KK2,KernelInfo KK3
 void Block3DSpreader::setNumThreads(int num)
 {
     d->m_num_threads=num;
+}
+
+void Block3DSpreader::setN(int N1, int N2, int N3)
+{
+    d->m_N1=N1;
+    d->m_N2=N2;
+    d->m_N3=N3;
+}
+
+void Block3DSpreader::setM(int M)
+{
+    d->m_M=M;
 }
 
 bool check_valid_inputs(BlockData *BD) {
@@ -405,4 +421,22 @@ KernelInfo Block3DSpreader::KK3()
 int Block3DSpreader::numThreads()
 {
     return d->m_num_threads;
+}
+
+int Block3DSpreader::N1()
+{
+    return d->m_N1;
+}
+int Block3DSpreader::N2()
+{
+    return d->m_N2;
+}
+int Block3DSpreader::N3()
+{
+    return d->m_N3;
+}
+
+int Block3DSpreader::M()
+{
+    return d->m_M;
 }

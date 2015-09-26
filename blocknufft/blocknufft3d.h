@@ -14,10 +14,12 @@ struct BlockNufft3DOptions {
 	int kernel_type;
 };
 
-//x,y,z should be in range [0,2pi)
-Block3DSpreader *blocknufft3d_prepare(const BlockNufft3DOptions &opts,double *x,double *y,double *z);
-bool blocknufft3d_run(Block3DSpreader *SS,const BlockNufft3DOptions &opts,double *uniform_d,double *nonuniform_d);
-void test_blocknufft3d(BlockNufft3DOptions &opts);
+//x,y,z should be in range [-pi,pi)
+void *blocknufft3d_create_plan(BlockNufft3DOptions opts,double *x,double *y,double *z);
+void *blocknufft3d_create_plan(int N1,int N2,int N3,int M,double *x,double *y,double *z,double eps,int K1=50,int K2=50,int K3=50,int num_threads=1,int kernel_type=KERNEL_TYPE_KB);
+bool blocknufft3d_run(void *plan,double *uniform_d,double *nonuniform_d);
+void blocknufft3d_destroy_plan(void *plan);
+
 
 /* MATLAB interface using MCWRAP
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
