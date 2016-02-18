@@ -7,6 +7,10 @@ Compilation is not quite straightforward at this point, but here's what you can 
 Create the mex for the fortran version
 > cd nufft-1.33-mcwrap
 > compile_mex_nufft
+> cd ..
+
+If you want to access the fortran versions directly use
+> addpath nufft-1.33-mcwrap
 
 Create the mex for the C++ version - a bit more complicated
 Not having an easy time using openmp in mex... so you must first creat a .o file:
@@ -25,5 +29,3 @@ There are various options to do various things. Sorry, no more details
 at this point.
 
 Run FESSLER at your own risk -- uses up a lot of RAM, depending on size of data.
-
-

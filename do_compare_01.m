@@ -64,7 +64,7 @@ algorithms={
     %struct('name','blocknufft-g','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_gaussian)
     %struct('name','blocknufft','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft)
     struct('name','blocknufft-b','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_blocking)
-    %struct('name','blocknufft-mb','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_multithread)
+    struct('name','blocknufft-mb','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_multithread)
     %struct('name','nufft Fessler','alg_init',@alg_fessler_init,'alg_run',@alg_fessler_run,'algopts',opts_fessler)
     %struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m1)
     %struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m2)
