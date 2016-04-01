@@ -25,7 +25,7 @@ void blocknufft3d_destroy_plan(void *plan);
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 MCWRAP [ COMPLEX uniform_d[N1,N2,N3] ] = blocknufft3d( xyz[M,3], COMPLEX nonuniform_d[M,1], eps, N1, N2, N3, K1, K2, K3, num_threads, kernel_type )
     SET_INPUT M = size(xyz,1)
-	SOURCES blocknufft3d.o qute.cpp besseli.cpp block3dspreader.o
+    SOURCES blocknufft3d.o qute.cpp besseli.cpp block3dspreader.o blocknufft3d_c.cpp
     MEXARGS -largeArrayDims -lm -lgomp -lfftw3 -lfftw3_threads -lrt
 
 (AHB added -lrt for clock_gettime to link in ubuntu 12.04 system, 2/18/16)
