@@ -29,7 +29,7 @@ struct BlockSpread3DData {
 
 // A couple implementation routines for nufft
 bool do_fft_3d(int N1,int N2,int N3,double *out,double *in,int num_threads=1);
-void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo KK1,KernelInfo KK2,KernelInfo KK3,double *out,double *out_oversamp_hat);
+void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo KK1,KernelInfo KK2,KernelInfo KK3,double *out,double *the_oversamp_hat);
 
 // These are the implementation routines for spreading
 void define_block_ids_and_location_codes(BlockSpread3DData &D);
@@ -321,62 +321,27 @@ void *blocknufft3d_create_plan(int N1,int N2,int N3,int M,double *x,double *y,do
     opts.eps=eps;
     opts.kernel_type=kernel_type;
     opts.num_threads=num_threads;
+    opts.transform_type=1;
 
     return blocknufft3d_create_plan(opts,x,y,z);
 }
 
-// Here's the nufft run!
-bool blocknufft3d_run(void *plan,double *out,double *d) {
-
-    if (!plan) {
-        printf("Problem running nufft... plan is null.\n");
-        return false;
-    }
-
-    Block3DSpreader *SS=(Block3DSpreader *)plan;
-    QTime blocknufft3d_timer; blocknufft3d_timer.start();
-    omp_set_num_threads(SS->numThreads());
-    QTime timer0;
-
-    ////////////////////////////////////////////////////////////////////
-    timer0.start();
-    int N1o=(int)(SS->N1()*SS->KK1().oversamp); int N2o=(int)(SS->N2()*SS->KK2().oversamp); int N3o=(int)(SS->N3()*SS->KK3().oversamp);
-
-    double *out_oversamp=(double *)malloc(sizeof(double)*N1o*N2o*N3o*2);
-    double *out_oversamp_hat=(double *)malloc(sizeof(double)*N1o*N2o*N3o*2);
-
+void copy_the_non_uniform_data_into_the_blocks(Block3DSpreader *SS,double *nonuniform_d) {
     for (int bb=0; bb<SS->blockCount(); bb++) {
         BlockData *BD=SS->block(bb);
         for (int mm=0; mm<BD->M; mm++) {
             int ii=BD->nonuniform_indices[mm];
-            BD->nonuniform_d[mm*2]=d[ii*2];
-            BD->nonuniform_d[mm*2+1]=d[ii*2+1];
+            BD->nonuniform_d[mm*2]=nonuniform_d[ii*2];
+            BD->nonuniform_d[mm*2+1]=nonuniform_d[ii*2+1];
         }
     }
-    double setup_time=timer0.elapsed();
-    printf ("  Setting up data: %d ms\n",(int)setup_time);
+}
 
-    ////////////////////////////////////////////////////////////////////
-    timer0.start();
+void do_the_spreading(Block3DSpreader *SS) {
     SS->run();
-    double spreading_operation_count=0;
-    for (int j=0; j<SS->blockCount(); j++) {
-        BlockData *BD=SS->block(j);
-        spreading_operation_count+=BD->M*SS->KK1().nspread*SS->KK2().nspread*SS->KK3().nspread*4;
-    }
-    double spreading_time=timer0.elapsed();
-    printf ("  Spreading: %d ms (%g megaflops)\n",(int)spreading_time,spreading_operation_count*1.0/spreading_time*1000/1e6);
+}
 
-    ////////////////////////////////////////////////////////////////////
-    timer0.start();
-	int N1oN2oN3o=N1o*N2o*N3o;
-	for (int ii=0; ii<N1oN2oN3o; ii++) {
-		out_oversamp[ii*2]=0;
-		out_oversamp[ii*2+1]=0;
-	}
-
-    int nspread1=SS->KK1().nspread; int nspread2=SS->KK2().nspread; int nspread3=SS->KK3().nspread;
-
+long combine_the_blocks(Block3DSpreader *SS,double *the_oversamp,int N1o,int N2o,int N3o) {
     /*
      * Now we need to combine the output data from the blocks.
      * And we'd like to parallelize this step. However, due to overlaps, we cannot just let every
@@ -384,6 +349,12 @@ bool blocknufft3d_run(void *plan,double *out,double *d) {
      * This is why we NEED to make sure we have an even number of blocks in each direction (or 1 is okay)!!
      * This is guaranteed/handled above
      */
+    int N1oN2oN3o=N1o*N2o*N3o;
+    for (int ii=0; ii<N1oN2oN3o; ii++) {
+        the_oversamp[ii*2]=0;
+        the_oversamp[ii*2+1]=0;
+    }
+    int nspread1=SS->KK1().nspread; int nspread2=SS->KK2().nspread; int nspread3=SS->KK3().nspread;
     QTime combining_timer; combining_timer.start(); int combining_operation_count=0;
     for (int bb_z_parity=0; bb_z_parity<2; bb_z_parity++)
     for (int bb_y_parity=0; bb_y_parity<2; bb_y_parity++)
@@ -406,8 +377,8 @@ bool blocknufft3d_run(void *plan,double *out,double *d) {
                             for (int j2=min2; j2<max2; j2++) {
                                 int kkk2=kkk3+j2*N1o;
                                 for (int j1=min1+kkk2; j1<max1+kkk2; j1++) { //we absorb the +kkk2 into the loop, not sure if it helps
-                                    out_oversamp[j1*2]+=BD->uniform_d[jjj*2];
-                                    out_oversamp[j1*2+1]+=BD->uniform_d[jjj*2+1];
+                                    the_oversamp[j1*2]+=BD->uniform_d[jjj*2];
+                                    the_oversamp[j1*2+1]+=BD->uniform_d[jjj*2+1];
                                     jjj++;
                                 }
                                 local_operation_count+=BD->N1o*2;
@@ -426,8 +397,8 @@ bool blocknufft3d_run(void *plan,double *out,double *d) {
                                 int kkk2=kkk3+((j2+N2o)%N2o)*N1o;
                                 for (int j1=min1; j1<max1; j1++) {
                                     int k1=((j1+N1o)%N1o)+kkk2;
-                                    out_oversamp[k1*2]+=BD->uniform_d[jjj*2];
-                                    out_oversamp[k1*2+1]+=BD->uniform_d[jjj*2+1];
+                                    the_oversamp[k1*2]+=BD->uniform_d[jjj*2];
+                                    the_oversamp[k1*2+1]+=BD->uniform_d[jjj*2+1];
                                     jjj++;
                                 }
                                 local_operation_count+=BD->N1o*2;
@@ -439,34 +410,96 @@ bool blocknufft3d_run(void *plan,double *out,double *d) {
             combining_operation_count+=local_operation_count;
         }
     }
+    return combining_operation_count;
+}
+
+// Here's the nufft run!
+bool blocknufft3d_run(void *plan,double *uniform_d,double *nonuniform_d) {
+
+    if (!plan) {
+        printf("Problem running nufft... plan is null.\n");
+        return false;
+    }
+
+    Block3DSpreader *SS=(Block3DSpreader *)plan;
+    QTime blocknufft3d_timer; blocknufft3d_timer.start();
+    omp_set_num_threads(SS->numThreads());
+    QTime timer0;
+
+    ////////////////////////////////////////////////////////////////////
+    timer0.start();
+    int N1o=(int)(SS->N1()*SS->KK1().oversamp); int N2o=(int)(SS->N2()*SS->KK2().oversamp); int N3o=(int)(SS->N3()*SS->KK3().oversamp);
+    double *the_oversamp=(double *)malloc(sizeof(double)*N1o*N2o*N3o*2);
+    double *the_oversamp_hat=(double *)malloc(sizeof(double)*N1o*N2o*N3o*2);
+
+    /////////////////////////////////////////////////////////////////////
+    // Copy the non-uniform data into the blocks
+    /////////////////////////////////////////////////////////////////////
+    copy_the_non_uniform_data_into_the_blocks(SS,nonuniform_d);
+    /////////////////////////////////////////////////////////////////////
+
+    double setup_time=timer0.elapsed();
+    printf ("  Setting up data: %d ms\n",(int)setup_time);
+
+    /////////////////////////////////////////////////////////////////////
+    // Do the spreading
+    /////////////////////////////////////////////////////////////////////
+    timer0.start();
+    do_the_spreading(SS);
+    double spreading_operation_count=0;
+    for (int j=0; j<SS->blockCount(); j++) {
+        BlockData *BD=SS->block(j);
+        spreading_operation_count+=BD->M*SS->KK1().nspread*SS->KK2().nspread*SS->KK3().nspread*4;
+    }
+    double spreading_time=timer0.elapsed();
+    printf ("  Spreading: %d ms (%g megaflops)\n",(int)spreading_time,spreading_operation_count*1.0/spreading_time*1000/1e6);
+    ////////////////////////////////////////////////////////////////////
+
+    /////////////////////////////////////////////////////////////////////
+    // Combine the blocks
+    timer0.start();
+    double combining_operation_count=combine_the_blocks(SS,the_oversamp,N1o,N2o,N3o);
     double combining_time=timer0.elapsed();
     printf ("  Combining: %d ms (%g megaflops)\n",(int)combining_time,combining_operation_count*1.0/combining_time*1000/1e6);
+    /////////////////////////////////////////////////////////////////////
 
-    ////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////
+    // The FFT
+    /////////////////////////////////////////////////////////////////////
     timer0.start();
-    //fft
-    if (!do_fft_3d(N1o,N2o,N3o,out_oversamp_hat,out_oversamp,SS->numThreads())) {
-        printf ("problem in do_fft_3d\n");
-		free(out_oversamp);
-		free(out_oversamp_hat);
-		return false;
-	}
-	double fft_time=timer0.elapsed();
+    {
+
+        //fft
+        if (!do_fft_3d(N1o,N2o,N3o,the_oversamp_hat,the_oversamp,SS->numThreads())) {
+            printf ("problem in do_fft_3d\n");
+            free(the_oversamp);
+            free(the_oversamp_hat);
+            return false;
+        }
+    }
+    double fft_time=timer0.elapsed();
     printf ("  FFT: %d ms\n",(int)fft_time);
+    /////////////////////////////////////////////////////////////////////
 
-    ////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////
+    // The Correction
+    /////////////////////////////////////////////////////////////////////
     timer0.start();
-    //correction
-    do_fix_3d(SS->N1(),SS->N2(),SS->N3(),SS->M(),SS->KK1(),SS->KK2(),SS->KK3(),out,out_oversamp_hat);
+    {
+        //correction
+        do_fix_3d(SS->N1(),SS->N2(),SS->N3(),SS->M(),SS->KK1(),SS->KK2(),SS->KK3(),uniform_d,the_oversamp_hat);
+    }
     double correction_time=timer0.elapsed();
     printf ("  Correction: %d ms\n",(int)correction_time);
+    /////////////////////////////////////////////////////////////////////
 
     ////////////////////////////////////////////////////////////////////
     //finalize
     timer0.start();
-
-	free(out_oversamp_hat);
-	free(out_oversamp);
+    {
+        free(the_oversamp_hat);
+        free(the_oversamp);
+    }
     double finalize_time=timer0.elapsed();
     printf ("  Finalize: %d ms\n",(int)finalize_time);
 
@@ -546,201 +579,8 @@ bool do_fft_3d(int N1,int N2,int N3,double *out,double *in,int num_threads) {
 	return true;
 }
 
-void do_fix_3d_OLD(int N1,int N2,int N3,int M,KernelInfo KK1,KernelInfo KK2,KernelInfo KK3,double *out,double *out_oversamp_hat) {
 
-    double oversamp=KK1.oversamp;
-
-    int N1b=(int)(N1*oversamp);
-    int N2b=(int)(N2*oversamp);
-    int N3b=(int)(N3*oversamp);
-
-#ifdef NUFFT_ANALYTIC_CORRECTION
-
-    double lambda=M_PI/KK.tau;
-
-    double *correction_vals1=(double *)malloc(sizeof(double)*(N1/2+2));
-    double *correction_vals2=(double *)malloc(sizeof(double)*(N2/2+2));
-    double *correction_vals3=(double *)malloc(sizeof(double)*(N3/2+2));
-
-    double t1=M_PI * lambda / (N1b*N1b);
-    double t2=M_PI * lambda / (N2b*N2b);
-    double t3=M_PI * lambda / (N3b*N3b);
-    for (int i=0; i<N1/2+2; i++) {
-        correction_vals1[i]=exp(-i*i*t1)*(lambda*sqrt(lambda))*M;
-    }
-    for (int i=0; i<N2/2+2; i++) {
-        correction_vals2[i]=exp(-i*i*t2);
-    }
-    for (int i=0; i<N3/2+2; i++) {
-        correction_vals3[i]=exp(-i*i*t3);
-    }
-
-    for (int i3=0; i3<N3; i3++) {
-        int aa3=((i3+N3/2)%N3)*N1*N2; //this includes a shift of the zero frequency
-        int bb3=0;
-        double correction3=1/(lambda*sqrt(lambda));
-        if (i3<(N3+1)/2) { //had to be careful here!
-            bb3=i3*N1*oversamp*N2*oversamp;
-            correction3=correction_vals3[i3];
-        }
-        else {
-            bb3=(N3*oversamp-(N3-i3))*N1*oversamp*N2*oversamp;
-            correction3=correction_vals3[N3-i3];
-        }
-        for (int i2=0; i2<N2; i2++) {
-            int aa2=((i2+N2/2)%N2)*N1;
-            int bb2=0;
-            double correction2=1;
-            if (i2<(N2+1)/2) {
-                bb2=i2*N1*oversamp;
-                correction2=correction_vals2[i2];
-            }
-            else {
-                bb2=(N2*oversamp-(N2-i2))*N1*oversamp;
-                correction2=correction_vals2[N2-i2];
-            }
-            aa2+=aa3;
-            bb2+=bb3;
-            correction2*=correction3;
-            for (int i1=0; i1<N1; i1++) {
-                int aa1=(i1+N1/2)%N1;
-                int bb1=0;
-                double correction1=1;
-                if (i1<(N1+1)/2) {
-                    bb1=i1;
-                    correction1=correction_vals1[i1];
-                }
-                else {
-                    bb1=N1*oversamp-(N1-i1);
-                    correction1=correction_vals1[N1-i1];
-                }
-                aa1+=aa2;
-                bb1+=bb2;
-                correction1*=correction2;
-                out[aa1*2]=out_oversamp_hat[bb1*2]/correction1;
-                out[aa1*2+1]=out_oversamp_hat[bb1*2+1]/correction1;
-            }
-        }
-    }
-    free(correction_vals1);
-    free(correction_vals2);
-    free(correction_vals3);
-#else
-
-    double *xcorrection=(double *)malloc(sizeof(double)*(N1b*2));
-    double *ycorrection=(double *)malloc(sizeof(double)*(N2b*2));
-    double *zcorrection=(double *)malloc(sizeof(double)*(N3b*2));
-
-    int correction_kernel_oversamp=2; //do not change this -- hard-coded below
-
-    for (int ik=1; ik<=3; ik++) {
-        KernelInfo *KK;
-        double *correction;
-        int Nb;
-        if (ik==1) {KK=&KK1; Nb=N1b; correction=xcorrection;}
-        if (ik==2) {KK=&KK2; Nb=N2b; correction=ycorrection;}
-        if (ik==3) {KK=&KK3; Nb=N3b; correction=zcorrection;}
-        int nspread_correction=KK->nspread*2;
-
-        double kernel_A[nspread_correction]; double kernel_B[nspread_correction];
-        evaluate_kernel_1d(kernel_A,0,-nspread_correction/2,-nspread_correction/2+nspread_correction-1,*KK);
-        evaluate_kernel_1d(kernel_B,-0.5,-nspread_correction/2,-nspread_correction/2+nspread_correction-1,*KK);
-        for (int ii=0; ii<Nb*2; ii++) correction[ii]=0;
-        for (int dx=-nspread_correction/2; dx<-nspread_correction/2+nspread_correction; dx++) {
-            {
-                double phase_increment=dx*2*M_PI/Nb;
-                double kernel_val=kernel_A[dx+nspread_correction/2]/correction_kernel_oversamp;
-                double phase_factor=0;
-                for (int xx=0; xx<=Nb/2; xx++) {
-                    correction[xx*2]+=kernel_val*cos(phase_factor);
-                    correction[xx*2+1]+=kernel_val*sin(phase_factor);
-                    phase_factor+=phase_increment;
-                }
-                phase_factor=-phase_increment;
-                for (int xx=Nb-1; xx>Nb/2; xx--) {
-                    correction[xx*2]+=kernel_val*cos(phase_factor);
-                    correction[xx*2+1]+=kernel_val*sin(phase_factor);
-                    phase_factor-=phase_increment;
-                }
-            }
-            {
-                double phase_increment=(dx+0.5)*2*M_PI/Nb;
-                double kernel_val=kernel_B[dx+nspread_correction/2]/correction_kernel_oversamp;
-                double phase_factor=0;
-                for (int xx=0; xx<=Nb/2; xx++) {
-                    correction[xx*2]+=kernel_val*cos(phase_factor);
-                    correction[xx*2+1]+=kernel_val*sin(phase_factor);
-                    phase_factor+=phase_increment;
-                }
-                phase_factor=-phase_increment;
-                for (int xx=Nb-1; xx>Nb/2; xx--) {
-                    correction[xx*2]+=kernel_val*cos(phase_factor);
-                    correction[xx*2+1]+=kernel_val*sin(phase_factor);
-                    phase_factor-=phase_increment;
-                }
-            }
-        }
-    }
-
-    for (int i3=0; i3<N3; i3++) {
-        int aa3=((i3+N3/2)%N3); //this includes a shift of the zero frequency
-        int bb3=0;
-        if (i3<(N3+1)/2) { //had to be careful here!
-            bb3=i3;
-        }
-        else {
-            bb3=(N3*oversamp-(N3-i3));
-        }
-        double correction3_re=zcorrection[bb3*2];
-        double correction3_im=zcorrection[bb3*2+1];
-        aa3=aa3*N1*N2;
-        bb3=bb3*N1*oversamp*N2*oversamp;
-        for (int i2=0; i2<N2; i2++) {
-            int aa2=((i2+N2/2)%N2);
-            int bb2=0;
-            if (i2<(N2+1)/2) {
-                bb2=i2;
-            }
-            else {
-                bb2=(N2*oversamp-(N2-i2));
-            }
-            double correction2_re=correction3_re*ycorrection[bb2*2] - correction3_im*ycorrection[bb2*2+1];
-            double correction2_im=correction3_re*ycorrection[bb2*2+1] + correction3_im*ycorrection[bb2*2];
-            aa2=aa2*N1+aa3;
-            bb2=bb2*N1*oversamp+bb3;
-            for (int i1=0; i1<N1; i1++) {
-                int aa1=(i1+N1/2)%N1;
-                int bb1=0;
-                if (i1<(N1+1)/2) {
-                    bb1=i1;
-                }
-                else {
-                    bb1=N1*oversamp-(N1-i1);
-                }
-                double correction1_re=correction2_re*xcorrection[bb1*2] - correction2_im*xcorrection[bb1*2+1];
-                double correction1_im=correction2_re*xcorrection[bb1*2+1] + correction2_im*xcorrection[bb1*2];
-                double correction1_magsqr=correction1_re*correction1_re+correction1_im*correction1_im;
-                double correction1_inv_re=correction1_re/correction1_magsqr;
-                double correction1_inv_im=-correction1_im/correction1_magsqr;
-                aa1=aa1+aa2;
-                bb1=bb1+bb2;
-                out[aa1*2]=( out_oversamp_hat[bb1*2]*correction1_inv_re - out_oversamp_hat[bb1*2+1]*correction1_inv_im ) / M;
-                out[aa1*2+1]=( out_oversamp_hat[bb1*2]*correction1_inv_im + out_oversamp_hat[bb1*2+1]*correction1_inv_re ) / M;
-                //out[aa1*2]=out_oversamp_hat[bb1*2]; //for testing without correction
-                //out[aa1*2+1]=out_oversamp_hat[bb1*2+1]; //for testing without correction
-            }
-        }
-    }
-
-    free(xcorrection);
-    free(ycorrection);
-    free(zcorrection);
-
-#endif
-}
-
-
-void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo KK1,KernelInfo KK2,KernelInfo KK3,double *out,double *out_oversamp_hat) {
+void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo KK1,KernelInfo KK2,KernelInfo KK3,double *out,double *the_oversamp_hat) {
     int N1b=(int)(N1*KK1.oversamp);
     int N2b=(int)(N2*KK2.oversamp);
     int N3b=(int)(N3*KK3.oversamp);
@@ -808,8 +648,8 @@ void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo KK1,KernelInfo KK2,KernelIn
 				aa1+=aa2;
 				bb1+=bb2;
 				correction1*=correction2;
-				out[aa1*2]=out_oversamp_hat[bb1*2]/correction1;
-				out[aa1*2+1]=out_oversamp_hat[bb1*2+1]/correction1;
+                out[aa1*2]=the_oversamp_hat[bb1*2]/correction1;
+                out[aa1*2+1]=the_oversamp_hat[bb1*2+1]/correction1;
 			}
 		}
 	}
@@ -963,11 +803,11 @@ void do_fix_3d(int N1,int N2,int N3,int M,KernelInfo KK1,KernelInfo KK2,KernelIn
 				aa1=aa1+aa2;
 				bb1=bb1+bb2;
                 #ifdef USE_COMPLEX_CORRECTION
-                out[aa1*2]=( out_oversamp_hat[bb1*2]*correction1_re - out_oversamp_hat[bb1*2+1]*correction1_im ) / M;
-                out[aa1*2+1]=( out_oversamp_hat[bb1*2]*correction1_im + out_oversamp_hat[bb1*2+1]*correction1_re ) / M;
+                out[aa1*2]=( the_oversamp_hat[bb1*2]*correction1_re - the_oversamp_hat[bb1*2+1]*correction1_im ) / M;
+                out[aa1*2+1]=( the_oversamp_hat[bb1*2]*correction1_im + the_oversamp_hat[bb1*2+1]*correction1_re ) / M;
                 #else
-                out[aa1*2]=out_oversamp_hat[bb1*2]*correction1/M;
-                out[aa1*2+1]=out_oversamp_hat[bb1*2+1]*correction1/M;
+                out[aa1*2]=the_oversamp_hat[bb1*2]*correction1/M;
+                out[aa1*2+1]=the_oversamp_hat[bb1*2+1]*correction1/M;
                 #endif
 			}
 		}

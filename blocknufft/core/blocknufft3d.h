@@ -11,6 +11,7 @@ struct BlockNufft3DOptions {
 	int M; //number of non-uniform points
 	int num_threads; // The number of parallel threads to use
     double eps; //requested precision --> determines tau, oversamp factor and R
+    int transform_type;
 	int kernel_type;
 };
 

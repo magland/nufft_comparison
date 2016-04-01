@@ -1,6 +1,7 @@
 #ifndef QUTE_H
 #define QUTE_H
 
+///// NOTE: need to remove this line if on MAC
 #include <malloc.h>
 
 class QTimePrivate;
