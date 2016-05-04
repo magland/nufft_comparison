@@ -102,6 +102,7 @@ Block3DSpreader::~Block3DSpreader()
     }
     printf("%s:%d\n",__FUNCTION__,__LINE__);
     delete d;
+    printf("%s:%d\n",__FUNCTION__,__LINE__);
 }
 
 void Block3DSpreader::setKernelInfo(KernelInfo KK1,KernelInfo KK2,KernelInfo KK3)

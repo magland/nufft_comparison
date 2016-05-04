@@ -4,6 +4,7 @@
 ///// NOTE: need to remove this line if on MAC
 //#include <malloc.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 class QTimePrivate;
 class QTime {
@@ -70,8 +71,11 @@ QList<T>::QList()
 template <typename T>
 QList<T>::~QList()
 {
+    printf("%s:%d\n",__FUNCTION__,__LINE__);
 	if (d->m_list) free(d->m_list);
+    printf("%s:%d\n",__FUNCTION__,__LINE__);
 	delete d;
+    printf("%s:%d\n",__FUNCTION__,__LINE__);
 }
 
 template <typename T>
