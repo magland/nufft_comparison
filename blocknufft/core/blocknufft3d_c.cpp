@@ -24,4 +24,5 @@ void blocknufft3d_destroy_plan_f_(void **plan)
 {
     printf("%s\n",__FUNCTION__);
     blocknufft3d_destroy_plan(*plan);
+    printf("%s\n",__FUNCTION__);
 }
