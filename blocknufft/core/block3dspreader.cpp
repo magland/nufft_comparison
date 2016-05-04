@@ -32,27 +32,33 @@ PrecomputeData *newEmptyPrecomputeData() {
 }
 
 void free_precompute_data(PrecomputeData *PD) {
+    printf("%s:%d\n",__FUNCTION__,__LINE__);
     if (PD->xmins) free(PD->xmins); PD->xmins=0;
     if (PD->ymins) free(PD->ymins); PD->ymins=0;
     if (PD->zmins) free(PD->zmins); PD->zmins=0;
     if (PD->xmaxs) free(PD->xmaxs); PD->xmaxs=0;
     if (PD->ymaxs) free(PD->ymaxs); PD->ymaxs=0;
     if (PD->zmaxs) free(PD->zmaxs); PD->zmaxs=0;
+    printf("%s:%d\n",__FUNCTION__,__LINE__);
     if (PD->iixs) free(PD->iixs); PD->iixs=0;
     if (PD->iiys) free(PD->iiys); PD->iiys=0;
     if (PD->iizs) free(PD->iizs); PD->iizs=0;
     if (PD->xkernel) free(PD->xkernel); PD->xkernel=0;
     if (PD->ykernel) free(PD->ykernel); PD->ykernel=0;
     if (PD->zkernel) free(PD->zkernel); PD->zkernel=0;
+    printf("%s:%d\n",__FUNCTION__,__LINE__);
 }
 
 void free_block_data(BlockData *BD) {
+    printf("%s:%d\n",__FUNCTION__,__LINE__);
     free(BD->x);
     free(BD->y);
     free(BD->z);
+    printf("%s:%d\n",__FUNCTION__,__LINE__);
     free(BD->nonuniform_d);
     free(BD->uniform_d);
     free(BD->nonuniform_indices);
+    printf("%s:%d\n",__FUNCTION__,__LINE__);
 }
 
 class Block3DSpreaderPrivate {
@@ -84,14 +90,17 @@ Block3DSpreader::Block3DSpreader()
 
 Block3DSpreader::~Block3DSpreader()
 {
+    printf("%s:%d\n",__FUNCTION__,__LINE__);
     for (int i=0; i<d->m_precompute_data.count(); i++) {
         free_precompute_data(d->m_precompute_data.value(i));
         delete d->m_precompute_data.value(i);
     }
+    printf("%s:%d\n",__FUNCTION__,__LINE__);
     for (int i=0; i<d->m_precompute_data.count(); i++) {
         free_block_data(d->m_blocks.value(i));
         delete d->m_blocks.value(i);
     }
+    printf("%s:%d\n",__FUNCTION__,__LINE__);
     delete d;
 }
 
