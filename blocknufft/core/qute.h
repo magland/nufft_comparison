@@ -3,6 +3,7 @@
 
 ///// NOTE: need to remove this line if on MAC
 //#include <malloc.h>
+#include <stdlib.h>
 
 class QTimePrivate;
 class QTime {
