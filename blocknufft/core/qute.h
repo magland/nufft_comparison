@@ -2,7 +2,7 @@
 #define QUTE_H
 
 ///// NOTE: need to remove this line if on MAC
-#include <malloc.h>
+//#include <malloc.h>
 
 class QTimePrivate;
 class QTime {
