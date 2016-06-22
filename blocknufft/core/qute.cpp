@@ -1,45 +1,29 @@
 #include "qute.h"
 #include <math.h>
 #include <stdlib.h>
-#include <time.h>
+#include <sys/time.h>
 
 using namespace std;
 
-//typedef chrono::high_resolution_clock Clock;
-class QTimePrivate {
-public:
-    QTime *q;
-
-    //struct timespec m_start_time;
-
-};
-
-QTime::QTime() {
-    d=new QTimePrivate;
-    d->q=this;
-}
-
-QTime::~QTime()
-{
-    delete d;
-}
-
 void QTime::start()
 {
-    //clock_gettime(CLOCK_MONOTONIC, &d->m_start_time);
+    gettimeofday(&initial, 0);
+}
+
+int QTime::restart()
+{
+    int delta = this->elapsed();
+    this->start();
+    return delta;
 }
 
 int QTime::elapsed()
 {
-    return 0;
-    /*
-    struct timespec t2;
-    clock_gettime(CLOCK_MONOTONIC, &t2);
-    double elapsed;
-    elapsed = (t2.tv_sec - d->m_start_time.tv_sec);
-    elapsed += (t2.tv_nsec - d->m_start_time.tv_nsec) / 1000000000.0;
-    return (int)(elapsed*1000);
-    */
+    struct timeval now;
+    gettimeofday(&now, 0);
+    int delta = 1000 * (now.tv_sec - (initial.tv_sec + 1));
+    delta += (now.tv_usec + (1000000 - initial.tv_usec)) / 1000;
+    return delta;
 }
 
 int qrand()
