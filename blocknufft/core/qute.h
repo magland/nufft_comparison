@@ -6,16 +6,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-class QTimePrivate;
 class QTime {
 public:
-    friend class QTimePrivate;
-    QTime();
-    virtual ~QTime();
     void start();
+    int restart();
     int elapsed();
 private:
-    QTimePrivate *d;
+    struct timeval initial;
 };
 
 template <typename T>
