@@ -6,14 +6,14 @@
 %    N1 - int
 %    N2 - int
 %    N3 - int
-%    xyz - double (M,3)
-%    nonuniform_d - complex double (M,1)
 %    eps - double
 %    K1 - int
 %    K2 - int
 %    K3 - int
 %    num_threads - int
 %    kernel_type - int
+%    xyz - double (M,3)
+%    nonuniform_d - complex double (M,1)
 %
 % Outputs:
 %    uniform_d - complex double (N1,N2,N3)

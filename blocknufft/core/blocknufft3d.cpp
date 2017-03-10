@@ -180,6 +180,7 @@ void *blocknufft3d_create_plan(BlockNufft3DOptions opts,double *x_in,double *y_i
     SS->setN(opts.N1,opts.N2,opts.N3);
     SS->setM(opts.M);
 
+    if (!opts.num_threads) opts.num_threads=omp_get_max_threads();
     omp_set_num_threads(opts.num_threads);
 
     int N1o=(int)(opts.N1*KK1.oversamp); int N2o=(int)(opts.N2*KK2.oversamp); int N3o=(int)(opts.N3*KK3.oversamp);
@@ -523,6 +524,8 @@ void blocknufft3d_destroy_plan(void *plan) {
 
 // This is the mcwrap interface that does both create_plan and run from MATLAB
 void blocknufft3d(int N1,int N2,int N3,int M,double *uniform_d,double *xyz,double *nonuniform_d,double eps,int K1,int K2,int K3,int num_threads,int kernel_type) {
+    if (!num_threads) num_threads=omp_get_max_threads();
+    
 	BlockNufft3DOptions opts;
 	opts.eps=eps;
 	opts.K1=K1; opts.K2=K2; opts.K3=K3;

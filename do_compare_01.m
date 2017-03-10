@@ -4,7 +4,7 @@ rng(2);
 
 nufft_comparison_setup;
 
-eps=1e-6;
+eps=1e-4;
 
 % Create input data
 %E=create_3d_radial_example(200,200,200);
@@ -17,9 +17,9 @@ d=E.d;
 N1=200; N2=200; N3=200;
 
 % gold standard
-opts_blocknufft_gold.eps=1e-10;
+opts_blocknufft_gold.eps=1e-14;
 opts_blocknufft_gold.K1=80; opts_blocknufft_gold.K2=80; opts_blocknufft_gold.K3=80;
-opts_blocknufft_gold.num_threads=8;
+opts_blocknufft_gold.num_threads=16;
 opts_blocknufft_gold.kernel_type=2; % 1 -> gaussian, 2 -> KB
 
 %nufft3d1f90
@@ -43,6 +43,11 @@ opts_blocknufft_blocking.K1=50; opts_blocknufft_blocking.K2=50; opts_blocknufft_
 opts_blocknufft_multithread=opts_blocknufft_blocking;
 opts_blocknufft_multithread.num_threads=8;
 
+%blockufft test
+opts_blocknufft_test=opts_blocknufft_blocking;
+opts_blocknufft_test.num_threads=20;
+opts_blocknufft_test.eps=eps;
+
 %fessler
 opts_fessler.oversamp=2;
 opts_fessler.spreadR=7;
@@ -56,23 +61,29 @@ opts_nfft_m5.m=5;
 opts_nfft_m6.m=6;
 opts_nfft_m7.m=7;
 
+%finufft
+opts_finufft.eps=eps;
+opts_finufft.num_threads=0;
+
 % Uncomment the algorithms you want to test/compare
 % Gold standard uses eps=1e-10
 algorithms={
-    %struct('name','gold standard','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_gold)
+    struct('name','gold standard','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_gold)
     %struct('name','nufft fortran','alg_init',@alg_trivial_init,'alg_run',@alg_nufft3d1f90,'algopts',opts_nufft3d1f90)
     %struct('name','blocknufft-g','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_gaussian)
     %struct('name','blocknufft','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft)
-    struct('name','blocknufft-b','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_blocking)
-    struct('name','blocknufft-mb','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_multithread)
+    %%struct('name','blocknufft-b','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_blocking)
+    %struct('name','blocknufft-mb','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_multithread)
+    %struct('name','blocknufft-test','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_test)
     %struct('name','nufft Fessler','alg_init',@alg_fessler_init,'alg_run',@alg_fessler_run,'algopts',opts_fessler)
     %struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m1)
-    %struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m2)
+    struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m2)
     %struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m3)
     %struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m4)
     %struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m5)
     %struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m6)
     %struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m7)
+    struct('name','finufft','alg_init',@alg_trivial_init,'alg_run',@alg_finufft,'algopts',opts_finufft)
 };
 
 results={};
@@ -219,6 +230,13 @@ end
 function X=alg_nufft3d1f90(N1,N2,N3,xyz,d,obj,opts)
 
 X=nufft3d1f90(xyz(:,1),xyz(:,2),xyz(:,3),d,0,opts.eps,N1,N2,N3);
+
+end
+
+function X=alg_finufft(N1,N2,N3,xyz,d,obj,opts)
+
+isign=1;
+X=finufft3d1_mex(N1,N2,N3,xyz,d,isign,opts.eps,opts.num_threads);
 
 end
 
