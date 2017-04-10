@@ -1,20 +1,24 @@
 function do_compare_01
+% ahb tweaked version 4/10/17
 
 rng(2);
 
 nufft_comparison_setup;
 
-eps=1e-4;
+eps=1e-6;  % see m=3 below for nfft, is about right
 
 % Create input data
 %E=create_3d_radial_example(200,200,200);
 E=create_random_sampling_example(8e6);
+%E=create_random_sampling_example(1e3);
 %E=create_single_point_example([pi/5+pi,pi/7,pi/9]);
 %E=create_single_point_example([-pi/6,-pi/6,-pi/6]); E.d=E.d*(i);
 %E=create_single_point_example([pi/3,pi/6,pi/7]);
 xyz=cat(2,E.x,E.y,E.z);
 d=E.d;
 N1=200; N2=200; N3=200;
+%N1=100; N2=100; N3=100;
+
 
 % gold standard
 opts_blocknufft_gold.eps=1e-14;
@@ -77,8 +81,8 @@ algorithms={
     %struct('name','blocknufft-test','alg_init',@alg_trivial_init,'alg_run',@alg_blocknufft,'algopts',opts_blocknufft_test)
     %struct('name','nufft Fessler','alg_init',@alg_fessler_init,'alg_run',@alg_fessler_run,'algopts',opts_fessler)
     %struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m1)
-    struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m2)
-    %struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m3)
+%    struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m2)
+    struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m3)
     %struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m4)
     %struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m5)
     %struct('name','nfft','alg_init',@alg_nfft_init,'alg_run',@alg_nfft_run,'algopts',opts_nfft_m6)
@@ -234,9 +238,12 @@ X=nufft3d1f90(xyz(:,1),xyz(:,2),xyz(:,3),d,0,opts.eps,N1,N2,N3);
 end
 
 function X=alg_finufft(N1,N2,N3,xyz,d,obj,opts)
+% ahb fixed calling args. 4/10/17
 
 isign=1;
-X=finufft3d1_mex(N1,N2,N3,xyz,d,isign,opts.eps,opts.num_threads);
+%X=finufft3d1(N1,N2,N3,xyz,d,isign,opts.eps,opts.num_threads);
+o.nthreads=opts.num_threads;
+X=finufft3d1(xyz(:,1),xyz(:,2),xyz(:,3),d,isign,opts.eps,N1,N2,N3,o);
 
 end
 

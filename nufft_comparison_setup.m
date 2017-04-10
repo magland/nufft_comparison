@@ -8,7 +8,7 @@ addpath([path0,'/nufft_fessler/systems/arch']);
 addpath([path0,'/blocknufft/core']);
 addpath([path0,'/nufft-1.33-mcwrap']);
 addpath([path0,'/../nfft-3.3.2/matlab/nfft']);
-addpath([path0,'/../finufft/matlab']);
+addpath('~/numerics/finufft/matlab');
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Instructions for installing nfft

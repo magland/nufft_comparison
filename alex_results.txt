@@ -1,0 +1,108 @@
+3D Type 1: comparison via do_compare_01.m
+4/10/17
+
+create_random_sampling_example(8e6) w/ 200^3 modes:
+
+~Block3DSpreader:105
+Run time: 80.8491
+
+Initializing nfft...
+time for creating nfft plan: 50.2523 s
+time for nfft_precompute_psi: 1.91062 s
+Running nfft...
+Run time: 4.09304
+
+Initializing finufft...
+Running finufft...
+Run time: 6.06951
+
+Max. differences:
+                  gold standard            nfft         finufft 
+  gold standard               0     3.90973e-06     3.09168e-06 
+           nfft     3.90973e-06               0     4.37101e-06 
+        finufft     3.09168e-06     4.37101e-06               0 
+
+Avg. differences:
+                  gold standard            nfft         finufft 
+  gold standard               0     3.11038e-07     2.57118e-07 
+           nfft     3.11038e-07               0     4.19194e-07 
+        finufft     2.57118e-07     4.19194e-07               0 
+
+      Algorithm   Init time (s)    Run time (s)        RAM (GB)
+  gold standard           0.000          80.849           0.000
+           nfft          52.298           4.093           3.924
+        finufft           0.007           6.070          -4.157
+
+using m=4 for nfft, gets sim accuracy to finufft @ 1e-6.
+
+-----------
+
+create_3d_radial_example(200,200,200) w/ 200^3 modes:
+
+~Block3DSpreader:105
+Run time: 51.4463
+
+Initializing nfft...
+time for creating nfft plan: 49.3412 s
+time for nfft_precompute_psi: 1.86908 s
+Running nfft...
+Run time: 4.68231
+
+Initializing finufft...
+Running finufft...
+Run time: 5.20441
+
+Max. differences:
+                  gold standard            nfft         finufft 
+  gold standard               0     3.70667e-06     2.70138e-06 
+           nfft     3.70667e-06               0     4.05152e-06 
+        finufft     2.70138e-06     4.05152e-06               0 
+
+Avg. differences:
+                  gold standard            nfft         finufft 
+  gold standard               0     3.11065e-07     2.57532e-07 
+           nfft     3.11065e-07               0     4.19481e-07 
+        finufft     2.57532e-07     4.19481e-07               0 
+
+      Algorithm   Init time (s)    Run time (s)        RAM (GB)
+  gold standard           0.000          51.446           0.000
+           nfft          51.355           4.682           3.919
+        finufft           0.007           5.204          -4.167
+
+--- So, we do better for this radial example than unif rand.
+
+--------------------
+
+E=create_random_sampling_example(8e5)  w/ 200^3 modes:
+
+~Block3DSpreader:105
+Run time: 9.99709
+Initializing nfft...
+time for creating nfft plan: 49.6698 s
+time for nfft_precompute_psi: 0.203769 s
+Running nfft...
+Run time: 2.01386
+Initializing finufft...
+Running finufft...
+Run time: 1.41924
+Max. differences:
+                  gold standard            nfft         finufft 
+  gold standard               0     3.82343e-06     3.13627e-06 
+           nfft     3.82343e-06               0     4.14764e-06 
+        finufft     3.13627e-06     4.14764e-06               0 
+
+Avg. differences:
+                  gold standard            nfft         finufft 
+  gold standard               0     3.27997e-07     2.71201e-07 
+           nfft     3.27997e-07               0     4.42101e-07 
+        finufft     2.71201e-07     4.42101e-07               0 
+
+      Algorithm   Init time (s)    Run time (s)        RAM (GB)
+  gold standard           0.000           9.997           0.000
+           nfft          49.889           2.014           2.256
+        finufft           0.004           1.419          -2.366
+
+Note the NFFT plan is still 50 sec! WHY so long to plan?
+Scales like the # Fourier modes, not the # pts.
+Ask them why.
+
